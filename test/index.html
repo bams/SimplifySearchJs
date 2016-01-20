@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<!-- <link href="https://code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css" rel="stylesheet" type="text/css" />
+<script src="https://code.jquery.com/jquery-1.11.3.js"></script>
+<script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script> -->
+<style>
+.ssj-menu {
+  list-style: none;
+  border: 1px #000 solid;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  max-height: 12em;
+  overflow: auto;
+  line-height: 1.5em;
+  background: #fff;
+}
+.ssj-menu .focus {
+  background: #999;
+}
+.ssj-menu :hover {
+  background: #f99;
+}
+.ssj-menu li {
+  overflow: auto;
+  zoom: 1;
+  clear: both;
+  padding: 2px;
+  border-bottom: 1px solid #ddd;
+}
+.ssj-tag {
+  position: relative;
+  padding: 0 0.5em;
+  background: #ddd;
+}
+.ssj-tag:hover {
+  background: #ddd;
+}
+.ssj-tag::before {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: -0.45em;
+  height: 0;
+  border: 0.5em solid transparent; 
+  border-left-width: 0;
+  border-right-color: #ddd;
+}
+.ssj-menu .ssj-tag {
+  float: right;
+  margin-top: 0.3em; /* (2-1.4)/2 */
+  margin-left:0.45em; /* :before border width */
+  height: 1.4em; /*2em*/
+  font-size: 0.75em;
+  line-height: 1.4em;
+}
+.ssj-menu .ssj-tag::before {
+   top: 0.2em;
+}
+</style>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>TEST</title>
+</head>
+
+<body>
+  <form action="" id='test'>
+  <label for="keyword">關鍵字</label>
+  <input type="text" name="keyword" id="keyword" value="">
+  <br>
+
+  <label for="quesID">單號</label>
+  <input type="text" name="quesID" id="quesID" value="" maxlength="30">
+  <br>
+
+  <label for="customer">客戶</label>
+  <span id="cusIdSapn">
+  <select name="customer" id="customer"><option value="">- 全部 -</option>
+  <optgroup label=" AA -----------">
+  <option value="AA000002">ACD</option>
+  <option value="AA000007">ADMAL</option>
+  <option value="AA000004">Al S M</option>
+  <option value="AA000008">ALEF OR</option>
+  <option value="AA000012">EXCEL</option>
+  <option value="AA000006">IMI</option>
+  <option value="AA000005">NETECH</option>
+  <option value="AA000003">NEJOUM AL</option>
+
+  <option value="AA000011">EFOUA</option>
+  <option value="AA000001">SEA MASTER</option>
+  <option value="AA000009">TEAM N</option>
+  </optgroup><optgroup label=" CN -----------">
+  <option value="CN000224">上海古順</option>
+  <option value="CN000205">波躍</option>
+  <option value="CN000022">昌海</option>
+  <option value="CN000081">大連</option>
+  <option value="CN000188">中興</option>
+  </optgroup><optgroup label=" TW -----------">
+  <option value="TW000102">蒸蒸</option>
+  <option value="TW000018">日月神教</option>
+  <option value="TW000115">天機不可洩漏</option>
+  <option value="TW000037">都是假der</option>
+  </optgroup></select>
+  </span>
+
+  <span class="findSelectDiv">
+  (filter <input type="text" id="searchCusId" size="6" autocomplete="off"> )
+  </span>
+
+  <br>
+  <label for="source">來源</label>
+  <select name="source" id="source"><option value="">- 全部 -</option>
+  <option value="1">一般</option>
+  <option value="2">網路</option>
+  </select>
+
+  <br>
+  <label for="status">目前狀態</label>
+  <select name="status" id="status">
+  <option value="">- 全部 -</option>
+  <option value="A">待審核</option>
+  <option value="B">通過</option>
+  <option value="C">退回</option>
+  </select>
+
+  <br>
+
+  業務
+  <select name="userId">
+  <option value="">- 全部 -</option>
+  <option value="1">Vincent</option>
+  <option value="2">Arvin</option>
+  <option value="3">Tina</option>
+  <option value="4">Maple</option>
+  </select>
+
+  <br>
+  測試單一項目
+  <select name="oneItemTest">
+  <option value='1'>TEST VALUE</option>
+  </select>
+
+  <br>
+  	單選測試：<label><input type="radio" name="sex" value='1'> 男</label>
+  	<label><input type="radio" name="sex" value='2'> 女</label><br>
+    多選測試：<label><input type="checkbox" name="time[]" id='time' value='1'> 早</label>
+    <label><input type="checkbox" name="time[]" value='2'> 中</label>
+    <label><input type="checkbox" name="time[]" value='3'> 晚</label><br>
+    重複值測試：<label><input type="radio" name="sex2" value='1'> 男</label>
+    <label><input type="radio" name="sex2" value='2'> 女</label><br>
+    <label for='readonly1'>readonly 測試</label>：<input type="text" name="readonly1" value="不可修改的值" readonly><br>
+    disabled 測試：<label><input type="checkbox" name="disabled[]" value='1'> 北區</label>
+    <label><input type="checkbox" name="disabled[]" value='2' disabled> 中區</label>
+    <label><input type="checkbox" name="disabled[]" value='3'> 南區</label><br>
+    <input type="submit" value='送出'>
+  </form>
+  <hr>
+  autoComplete:<input type='text' data-test id='autoObj' autocomplete="off">
+  <script src="../js/simplify-search.js"></script>
+  <script>
+    var testJsObj = simplifySearch({
+      "formId": "test",
+      "autoFeildId": "autoObj",
+      "hideForm": false,
+      "debugMode": true,
+      // "hideTag": true,
+    }).addRegexpById('quesID', /^EQ\d+$/ )
+    .addIgnoreById('searchCusId')
+    .init();
+
+    console.log(testJsObj.log());
+  </script>
+</body>
+</html>

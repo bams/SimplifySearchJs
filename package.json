@@ -1,0 +1,26 @@
+{
+  "name": "simplify-search-js",
+  "version": "1.0.0",
+  "description": "make the complexity form (for search) simplify",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maplenote/SimplifySearchJs.git"
+  },
+  "author": "Maple",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/maplenote/SimplifySearchJs/issues"
+  },
+  "homepage": "https://github.com/maplenote/SimplifySearchJs#readme",
+  "devDependencies": {
+    "browser-sync": "^2.11.1",
+    "gulp": "^3.9.0"
+  }
+}
