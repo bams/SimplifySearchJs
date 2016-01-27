@@ -156,7 +156,9 @@
     <label><input type="checkbox" name="disabled[]" value='2' disabled> 中區</label>
     <label><input type="checkbox" name="disabled[]" value='3'> 南區</label><br>
     <input type="submit" value='送出'>
+
   </form>
+
   <hr>
   autoComplete:<input type='text' data-test id='autoObj' autocomplete="off">
   <script src="../js/simplify-search.js"></script>
@@ -169,6 +171,10 @@
       // "hideTag": true,
     }).addRegexpById('quesID', /^EQ\d+$/ )
     .addIgnoreById('searchCusId')
+    .setTitleByName('sex',"性別")
+    .setTitleByName('sex2',"性別測試重複")
+    .setTitleByName('time',"時段")
+    // .setTextCanMultipleById('keyword')
     .init();
 
     console.log(testJsObj.log());
