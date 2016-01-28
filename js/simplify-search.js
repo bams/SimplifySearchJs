@@ -24,6 +24,7 @@ function simplifySearch(param) {
     "tagClass": param.tagClass || "ssj-tag",
     "usePlaceholder": (param.usePlaceholder !== undefined)? !!param.usePlaceholder : true, 
   };
+  var notMappingWords = "";
   var wordsList = [];
   var mappingList = [];
   var regExpList = [];
@@ -35,7 +36,7 @@ function simplifySearch(param) {
   var configIgnoreList = [];
   var configTitleList = {};
   var keyinPosition = 0;
-  var keepSelectFlag = false;
+  // var keepSelectFlag = false;
   var constKeyCode = {
     "UP": 38,
     "DOWN": 40,
@@ -146,6 +147,7 @@ function simplifySearch(param) {
     _addEventListener(autoNode, "keyup", _checkWordChange); //輸入法異動只會觸發up事件
     _addEventListener(document, "click",_checkIfBlurAutoComplete);
     _addEventListener(autoNode, "click", _clickInputEventAction);
+
 
     return returnParam;
   }
@@ -450,6 +452,7 @@ function simplifySearch(param) {
     _keyDownEventAction(e)
     if (menuNode === null) {
       var tempSlice = autoNode.value.slice(0,keyinPosition).split(" ");
+      //TODO FIX BUG
       _selectAutoComplete(tempSlice.length-1);
     }
   }
@@ -462,38 +465,51 @@ function simplifySearch(param) {
 
   function _checkWordChange(e) {
     var inputText = autoNode.value.trim();
-    var textArr = inputText.split(" ");
+    // var textArr = inputText.split(" ");
     var tempList = [];
-    var tempKey = 0;
-    var tempOriList = _getAutoCompleteWordsArr();
+    //var tempKey = 0;
+    //var tempOriList = _getAutoCompleteWordsArr();
     var diffFlag = false;
-    var tempFlag;
+    var tempWIndex;
+    var tempWEnd;
+    var tempWord;
+    var newAutoObj;
+    //var tempFlag;
     if (inputText == "") { //清空輸入框
       diffFlag = true;
-      _removeMenuBox();
-    }
-    //比較是否有異動(BUG:選項文字中有空白)
-    for (var temp = 0; temp < textArr.length; temp++) {
-      var key = textArr[temp];
-      if (key == "") {
-        continue;
+    } else {
+      //文字片段可能會涵蓋空白，因此必須先判斷已選的文字，切割判斷完後再判斷剩下的
+      inputText = " " + inputText + " ";
+      for (var temp = 0; temp < autoCompleteList.length; temp++) {
+        if (autoCompleteList[temp] === undefined) {
+          continue;
+        }
+        tempWord = " " + autoCompleteList[temp].getTextFn() + " ";
+        tempWIndex = inputText.indexOf(tempWord);
+        if (tempWIndex !== -1) {
+          inputText = inputText.replace(tempWord, new Array(tempWord.length).join(" ")); //only replace first word
+          autoCompleteList[temp].sort = tempWIndex;
+          tempList.push(autoCompleteList[temp]);
+        } else {
+          diffFlag = true;
+        }
       }
-      tempKey = _arrayIndexOf(tempOriList,textArr[temp]);
-      if (tempKey == -1) {
-        tempList.push(new autoCompleteItemObj(textArr[temp]));
+      //剩下的文字就是新增的資料
+      if (inputText.trim() !== "") {
         diffFlag = true;
-      } else {
-        tempList.push(autoCompleteList[tempKey]);
-        tempOriList[tempKey] = undefined;
+        tempWIndex = inputText.search(/\S/i);
+        tempWEnd = inputText.indexOf(" ",tempWIndex);
+        tempWord = inputText.substring(tempWIndex,tempWEnd);
+        inputText = inputText.replace(tempWord, new Array(tempWord.length).join(" ")); //only replace first word
+        newAutoObj = new autoCompleteItemObj(tempWord);
+        newAutoObj.sort = tempWIndex;
+        tempList.push(newAutoObj);
       }
+      tempList.sort(function(a, b) {
+        return a.sort - b.sort;
+      }); 
     }
-    if (autoCompleteList.length != tempList.length){
-      diffFlag = true;
-    } 
-    //TODO  NEW: FIX BUG  
-    for (var temp = 0; temp < autoCompleteList.length; temp++) {
-
-    }
+    
     //END
     if (diffFlag) {
       //清空表單選擇
@@ -507,11 +523,13 @@ function simplifySearch(param) {
           _removeInvalidWord(e,'onlyRepeat');
           break;
         case constKeyCode.DOWN:
-          if (menuNode === null) {
+          if (menuNode === null) { 
             //取得目前的位置
             var tempSlice = autoNode.value.slice(0,keyinPosition).split(" ");
             // autoComplete(autoNode.value.split(" ")[tempSlice.length-1]);
-            _selectAutoComplete(tempSlice.length-1, true);
+            // TODO FIX BUG
+            _selectAutoComplete(tempSlice.length - 1, true);
+            
           }
       }
     }
@@ -526,6 +544,7 @@ function simplifySearch(param) {
     switch(e.keyCode) {
       case constKeyCode.ESC: //esc
         _removeMenuBox();
+        notMappingWords = "";
         break;
       case constKeyCode.UP: //up
         menuNode.children[tempFocusItem].className = "";
@@ -555,15 +574,24 @@ function simplifySearch(param) {
       case constKeyCode.ENTER: //enter
         var autoItemIndex = menuNode.getAttribute('data-auto-no');
         var tempAutoObj = autoCompleteList[autoItemIndex];
-        if (tempFocusItem == 0) {
-          tempAutoObj.removeObjFn();
-        } else {
+        // if (tempFocusItem == 0) {
+        //   tempAutoObj.removeObjFn();
+        // } else {
           var tempTypeArr = menuNode.children[tempFocusItem].getAttribute('data-value').split("-");
           if (tempTypeArr[0] == "S") {
             tempAutoObj.setObjFn(mappingList[tempTypeArr[1]]);
-          } else if (tempTypeArr[0] == "K"){
-            tempAutoObj.setObjFn(regExpList[tempTypeArr[1]]);
+          } else if (tempTypeArr[0] == "K") {
+            var tempItemObj = regExpList[tempTypeArr[1]];
+            tempItemObj.setTextFn(menuNode.children[0].textContent);
+            tempAutoObj.setObjFn(tempItemObj);          
           }
+        //}
+
+        var word = menuNode.children[0].textContent;
+        var tempWordsPart = word.split(" ").length;
+        var temp = autoItemIndex;
+        while ( --tempWordsPart > 0) {
+          autoCompleteList[--temp] = undefined;
         }
         _setAutoCompleteWord(autoItemIndex);
         _removeMenuBox();
@@ -574,9 +602,10 @@ function simplifySearch(param) {
   }
 
   function _createMenuBox(defaultWord,wordsKeyList,regexpKeyList,autoItemIndex) {
-    if (keepSelectFlag === true) {
-      return;
-    }
+    
+    // if (keepSelectFlag === true) {
+    //   return;
+    // }
     var selectNode = document.createElement("ul");
     var height = autoNode.offsetHeight || autoNode.clientHeight; 
     var width = autoNode.offsetWidth || autoNode.clientWidth;
@@ -656,7 +685,11 @@ function simplifySearch(param) {
   function _clickMenuItem(e) {
     var tempNode = e.target;
     if (tempNode.tagName != "LI") {
-      return;
+      if(tempNode.className == config.tagClass && tempNode.parentNode.tagName == "LI") {
+        tempNode = tempNode.parentNode;
+      } else {
+        return;
+      }
     }
     var index = _arrayIndexOf(menuNode.children,tempNode);
     if (index == -1 || index == 0) {
@@ -671,7 +704,15 @@ function simplifySearch(param) {
     if (tempTypeArr[0] == "S") {
       tempAutoObj.setObjFn(mappingList[tempTypeArr[1]]);
     } else if (tempTypeArr[0] == "K"){
-      tempAutoObj.setObjFn(regExpList[tempTypeArr[1]]);
+      var tempItemObj = regExpList[tempTypeArr[1]];
+      tempItemObj.setTextFn(menuNode.children[0].textContent);
+      tempAutoObj.setObjFn(tempItemObj);
+    }
+    var word = menuNode.children[0].textContent;
+    var tempWordsPart = word.split(" ").length;
+    var temp = autoItemIndex;
+    while ( --tempWordsPart > 0) {
+      autoCompleteList[--temp] = undefined;
     }
     _setAutoCompleteWord(autoItemIndex);
     _removeMenuBox();
@@ -699,16 +740,27 @@ function simplifySearch(param) {
     if (menuNode !== null) {
       menuNode.remove();
       menuNode = null;
-      keepSelectFlag = false;
+      // keepSelectFlag = false;
     }
   }
 
   function _checkAutoComplete() {
+    notMappingWords = "";
     for (var temp = 0; temp < autoCompleteList.length; temp++) {
-      if (_selectAutoComplete(temp)) {
-        keepSelectFlag = true;
+      if (autoCompleteList === undefined) {
+        continue;
       }
+      _selectAutoComplete(temp);
+      // if (_selectAutoComplete(temp)) {
+      //   keepSelectFlag = true;
+      // }
     }
+    // while (temp--){
+    //   if (autoCompleteList[temp] === undefined){
+    //     autoCompleteList.splice(temp,1);
+    //   }
+    // }
+    // console.log(autoCompleteList);
   }
 
   function _selectAutoComplete(autoObjIndex,resetFlag) {
@@ -721,6 +773,9 @@ function simplifySearch(param) {
       return false;
     }
     var word = tempAutoObj.getTextFn();
+    if (notMappingWords != "") {
+      word = notMappingWords + " " + word;
+    }
     var keepSelectKey = [];
     var keepRegexpKey = [];
     var temp;
@@ -740,21 +795,33 @@ function simplifySearch(param) {
         && wordsList[keepSelectKey[0]] === word
       ) {
       tempAutoObj.setObjFn(mappingList[keepSelectKey[0]]);
+      var tempWordsPart = word.split(" ").length;
+      while ( --tempWordsPart > 0) {
+        autoCompleteList[--autoObjIndex] = undefined;
+      }
+      notMappingWords = "";
       return false;
     } else if (
         keepSelectKey.length === 0 
         && keepRegexpKey.length === 1 
       ) {
       tempAutoObj.setObjFn(regExpList[keepRegexpKey[0]]);
+      var tempWordsPart = word.split(" ").length;
+      while ( --tempWordsPart > 0) {
+        autoCompleteList[--autoObjIndex] = undefined;
+      }
+      notMappingWords = "";
       return false;
     } else if (
         keepSelectKey.length === 0
         && keepRegexpKey.length === 0 
       ) {
       _removeMenuBox();
+      notMappingWords = word;
       //TODO regExpList
       return false;
     } else {
+      notMappingWords = word;
       //TODO regExpList
       _createMenuBox(word,keepSelectKey,keepRegexpKey,autoObjIndex);
       return true;
@@ -764,6 +831,9 @@ function simplifySearch(param) {
   function _getAutoCompleteWordsArr() {
     var list = [];
     for (var temp = 0; temp < autoCompleteList.length; temp++) {
+      if (autoCompleteList[temp] === undefined) {
+        continue;
+      }
       list.push(autoCompleteList[temp].getTextFn());
     }
     return list;
@@ -818,29 +888,33 @@ function simplifySearch(param) {
   function autoCompleteItemObj(inText){
     var text = inText;
     var custemObj; //TextObj,OptionObj,CheckObj...
+    this.sort = 0;
+    
     this.setObjFn = function(inObj){
       if (!(inObj instanceof TextObj) && inObj.text !== undefined && inObj.text != text) {
         text = inObj.text;
         _setAutoCompleteWord();
-      } else if (inObj instanceof TextObj && inObj.text === undefined) { 
-        inObj.setTextFn(text); //TextObj.setTextFn()
+      } else if (inObj instanceof TextObj ) { 
+        // inObj.setTextFn(text); //TextObj.setTextFn()
+        text = inObj.text;
+        _setAutoCompleteWord();
       }
       custemObj = inObj;
       custemObj.activeFn();
     };
     this.getObjFn = function (){
       return custemObj;
-    }
+    };
     this.getTextFn = function(){
       return text;
-    }
+    };
     this.removeObjFn = function(){
       if (custemObj === undefined) {
         return;
       }
       custemObj.cancelFn();
       custemObj = undefined;
-    }
+    };
   }
   //TextObj, OptionObj, CheckObj 共用 prototype
   function _getItemObjTitleTagFn() {
