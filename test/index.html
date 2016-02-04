@@ -5,6 +5,12 @@
 <script src="https://code.jquery.com/jquery-1.11.3.js"></script>
 <script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script> -->
 <style>
+.autoComplete {
+  width: 90%;
+  padding: 4px;
+  font-size: 12pt;
+  margin: 8px;
+}
 .ssj-menu {
   list-style: none;
   border: 1px #000 solid;
@@ -78,11 +84,11 @@
 
   <label for="customer">客戶</label>
   <span id="cusIdSapn">
-  <select name="customer" id="customer"><option value="">- 全部 -</option>
+  <select name="customer[]" id="customer" multiple><option value="">- 全部 -</option>
   <optgroup label=" AA -----------">
-  <option value="AA000002">ACD</option>
+  <option value="AA000002" disabled>ACD</option>
   <option value="AA000007">ADMAL</option>
-  <option value="AA000004">Al S M</option>
+  <option value="AA000004" selected>Al S M</option>
   <option value="AA000008">ALEF OR</option>
   <option value="AA000012">EXCEL</option>
   <option value="AA000006">IMI</option>
@@ -146,8 +152,8 @@
   <br>
   	單選測試：<label><input type="radio" name="sex" value='1'> 男</label>
   	<label><input type="radio" name="sex" value='2'> 女</label><br>
-    多選測試：<label><input type="checkbox" name="time[]" id='time' value='1'> 早</label>
-    <label><input type="checkbox" name="time[]" value='2'> 中</label>
+    多選測試：<label><input type="checkbox" name="time[]" id='time' value='1' checked> 早</label>
+    <label><input type="checkbox" name="time[]" value='2' checked> 中</label>
     <label><input type="checkbox" name="time[]" value='3'> 晚</label><br>
     重複值測試：<label><input type="radio" name="sex2" value='1'> 男</label>
     <label><input type="radio" name="sex2" value='2'> 女</label><br>
@@ -168,13 +174,13 @@
       "autoFeildId": "autoObj",
       "hideForm": false,
       "debugMode": true,
+      "autoFeildClass": "autoComplete",
       // "hideTag": true,
     }).addRegexpById('quesID', /^EQ\d+$/ )
     .addIgnoreById('searchCusId')
     .setTitleByName('sex',"性別")
     .setTitleByName('sex2',"性別測試重複")
     .setTitleByName('time',"時段")
-    // .setTextCanMultipleById('keyword')
     .init();
 
     console.log(testJsObj.log());
