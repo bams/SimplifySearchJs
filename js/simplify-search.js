@@ -21,6 +21,7 @@ function simplifySearch(param) {
     "delay": (param.delay !== undefined)? +param.delay : 300, //TODO
     "autoFeildClass": param.autoFeildClass || "",
     "menuClass": param.menuClass || "ssj-menu",
+    "msgClass": param.msgClass || "ssj-msg",
     "tagClass": param.tagClass || "ssj-tag",
     "usePlaceholder": (param.usePlaceholder !== undefined)? !!param.usePlaceholder : true, 
   };
@@ -29,6 +30,7 @@ function simplifySearch(param) {
   var formNode = document.getElementById(config.formId);
   var autoNode = null; //輸入框
   var menuNode = null; //選單
+  var messageNode = null; //訊息/錯誤
   var configRegExpList = []; //dom 可能會重複，若重複則使用最後一次的設定
   var configIgnoreList = [];
   
@@ -97,6 +99,7 @@ function simplifySearch(param) {
     //綁定autoComplete事件
     _addEventListener(autoNode, "keydown", _keyDownEventAction); //抓到游標原始位置
     _addEventListener(autoNode, "keydown", _controlSelectMenu); //控制autoComplete選單
+    _addEventListener(autoNode, "keydown", _controlMsgMenu); //控制message選單
     _addEventListener(autoNode, "keyup", _checkWordChange); //輸入法異動只會觸發up事件
     _addEventListener(document, "click",_checkIfBlurAutoComplete);
     _addEventListener(autoNode, "blur", _checkIfBlurAutoComplete);
@@ -147,9 +150,9 @@ function simplifySearch(param) {
   function setTitleByName(inName, inTitle) {
     var tempName = inName.replace(/\[.*\]/g, ""); //消除[]
     if (nodeDataList[tempName] === undefined) {
-      nodeDataList[tempName] = {};
+      nodeDataList[tempName] = new SSJNodeItemObj();
     }
-    nodeDataList[tempName].title = inTitle;
+    nodeDataList[tempName].setTitleFn(inTitle);
     return returnParam;
   }
   // function setTextCanMultipleById(id) {
@@ -276,60 +279,11 @@ function simplifySearch(param) {
     }
   }
   function _addNodeDataList(itemObj,parentNode) {
-    var tempName;
-    var fasterNode; //call by reference
-    var i;
-    var tempNode;
-
-    tempName = itemObj.name;
- 
+    var tempName = itemObj.name;
     if (nodeDataList[tempName] === undefined) {
-      nodeDataList[tempName] = {};
+      nodeDataList[tempName] = new SSJNodeItemObj();
     }
-
-    fasterNode = nodeDataList[tempName];
-    //建立預設值
-    fasterNode.title = fasterNode.title || _getLabelTitle(parentNode || itemObj.node);
-    fasterNode.defaultArr = fasterNode.defaultArr || [];
-    fasterNode.multiple = fasterNode.multiple || itemObj.multiple;
-    fasterNode.noShowInMenuFlag = fasterNode.noShowInMenuFlag || false;
-    fasterNode.itemObjs = fasterNode.itemObjs || [];
-    fasterNode.parentNode = fasterNode.parentNode || null;
-
-    //增加 itemObj
-    fasterNode.itemObjs.push(itemObj);
-    //調整 defaultArr, noShowInMenuFlag
-
-    if (itemObj instanceof TextObj) {
-      //text 對應 index 儲存目前文字
-      fasterNode.defaultArr.push(itemObj.value);
-      if (itemObj.usedFlag && !fasterNode.multiple) {
-        fasterNode.noShowInMenuFlag = true;
-      }
-    } else if (itemObj instanceof OptionObj) {
-      if (fasterNode.parentNode === null && parentNode !== undefined) {
-        fasterNode.parentNode = parentNode;
-      }
-      if (fasterNode.defaultArr.length == 0) {
-        //不論 config.ignoreEmptyValue 是否有排除，都要記錄預設選項
-        i = 0;
-        while (tempNode = parentNode.selectedOptions[i++]) {
-          fasterNode.defaultArr.push(tempNode);
-        }
-      }
-      if (itemObj.usedFlag) {
-        if (!fasterNode.multiple) {
-          fasterNode.noShowInMenuFlag = true;
-        }
-      }   
-    } else if (itemObj instanceof CheckObj) {
-      if (itemObj.usedFlag) {
-        fasterNode.defaultArr.push(itemObj.node);
-        if (!fasterNode.multiple) {
-          fasterNode.noShowInMenuFlag = true;
-        }
-      }
-    }   
+    nodeDataList[tempName].addItemObjFn(itemObj,parentNode);
   }
 
   function _analysisMappingLabel(domNode, parentNode) {
@@ -421,47 +375,71 @@ function simplifySearch(param) {
     var type;
     var i;
     var tempIndex;
-    
+    var tempName;
+    var tempParent;
+    if ( constTagType.NOALLOW === _getCustomTagType(domNode)) {
+      _warning("Not allow " + domNode.tagName);
+      return false;
+    }
     if (domNode.tagName == "OPTION") {
-      //TODO ERROR
-      return false;
-    }
-    if (domNode.name === undefined) {
-      //TODO ERROR
-      return false;
-    }
-    var tempName = domNode.name.replace(/\[.*\]/g, "");
-    if (nodeDataList[tempName] !== undefined && nodeDataList[tempName].itemObjs !== undefined) {
-      if (domNode.tagName == "SELECT" && nodeDataList[tempName].parentNode === domNode) {
-        nodeDataList[tempName] = undefined;
+      tempParent = domNode.parentNode;
+      if (tempParent.tagName == "OPTGROUP") {
+        tempParent = tempParent.parentNode;
+      }
+      if (tempParent.tagName == "SELECT" &&  tempParent.name !== undefined) {
+        tempName = tempParent.name.replace(/\[.*\]/g, "");
       } else {
-        i = -1;
-        while (tempObj = nodeDataList[tempName].itemObjs[++i]) {
-          if (tempObj.node === domNode) {
-            nodeDataList[tempName].itemObjs.splice(i,1);
-            //刪除預設值的設定
-            if (tempObj instanceof TextObj) {
-              nodeDataList[tempName].defaultArr.splice(i,1);
-            } else {
-              tempIndex = _arrayIndexOf(nodeDataList[tempName].defaultArr, domNode);
-              if (tempIndex !== -1) {
-                nodeDataList[tempName].defaultArr.splice(tempIndex,1);
-              }
-            }
-            break;
-          }
+        _warning("No find parent node <select>, so failed to ignore <option>");
+        return false;
+      }
+    } else if (domNode.name !== undefined) {
+      tempName = domNode.name.replace(/\[.*\]/g, "");
+    }
+    if (tempName === undefined) {
+      _warning("This node doesn't have name");
+      return false;
+    }
+    if (nodeDataList[tempName] !== undefined) {
+      if (domNode.tagName == "SELECT") {
+        if (nodeDataList[tempName].parentNode === domNode) {
+          nodeDataList[tempName] = undefined;
         }
+      } else {
+        nodeDataList[tempName].removeItemObjFn(domNode);
       }
     }
-    if (_arrayIndexOf(configIgnoreList,domNode)== -1) {
-      domNode.setAttribute('data-ignore-flag',configIgnoreList.length);
+
+    // if (nodeDataList[tempName] !== undefined && nodeDataList[tempName].itemObjs !== undefined) {
+    //   if (domNode.tagName == "SELECT" && nodeDataList[tempName].parentNode === domNode) {
+    //     nodeDataList[tempName] = undefined;
+    //   } else {
+    //     i = -1;
+    //     while (tempObj = nodeDataList[tempName].itemObjs[++i]) {
+    //       if (tempObj.node === domNode) {
+    //         nodeDataList[tempName].itemObjs.splice(i,1);
+    //         //刪除預設值的設定
+    //         if (tempObj instanceof TextObj) {
+    //           nodeDataList[tempName].defaultArr.splice(i,1);
+    //         } else {
+    //           tempIndex = _arrayIndexOf(nodeDataList[tempName].defaultArr, domNode);
+    //           if (tempIndex !== -1) {
+    //             nodeDataList[tempName].defaultArr.splice(tempIndex,1);
+    //           }
+    //         }
+    //         break;
+    //       }
+    //     }
+    //   }
+    // }
+    if (_arrayIndexOf(configIgnoreList, domNode)== -1) {
+      domNode.setAttribute('data-ignore-flag', configIgnoreList.length);
       configIgnoreList.push(domNode);
     }
     return true;
 
   }
 
-  function _addRegexpDom(domNode,regexp) {
+  function _addRegexpDom(domNode, regexp) {
     var type;
     var i;
     var tempName;
@@ -481,15 +459,10 @@ function simplifySearch(param) {
       }
     }
     tempName = domNode.name.replace(/\[.*\]/g, "");
-    if (nodeDataList[tempName] !== undefined && nodeDataList[tempName].itemObjs !== undefined) { 
-      tempList = nodeDataList[tempName].itemObjs;
-      for (i = 0; i < tempList.length; i++) {
-        if (tempList[i].node === domNode) {
-          tempList[i].setRegexpFn(regexp);
-          break;
-        }
-      }
+    if (nodeDataList[tempName] !== undefined) {
+      nodeDataList[tempName].changeRegexpFn(domNode, regexp);
     }
+    
     domNode.setAttribute('data-regexp-flag',configRegExpList.length);
     configRegExpList.push({"node": domNode, "regexp": regexp}); //不處理重複，以最後設定為主
     return true;
@@ -531,7 +504,15 @@ function simplifySearch(param) {
   }
 
   function _checkIfBlurAutoComplete(e) {
-    if (document.activeElement != menuNode && document.activeElement != autoNode) {
+    console.log("into _checkIfBlurAutoComplete");
+    if (
+      document.activeElement !== autoNode
+      && e.target !== autoNode
+      && document.activeElement !== menuNode  
+      && e.target.parentNode !== menuNode 
+      && e.target.parentNode.parentNode !== menuNode
+      ) {
+      
        _removeInvalidWord(e);
     }
   }
@@ -556,6 +537,7 @@ function simplifySearch(param) {
     } else {
       //文字片段可能會涵蓋空白，因此必須先判斷已選的文字，切割判斷完後再判斷剩下的
       inputText = " " + inputText + " ";
+
       i = 0;
       while (tempAutoObj = autoCompleteList[i++]) {
         if (tempAutoObj === undefined) {
@@ -573,7 +555,7 @@ function simplifySearch(param) {
         }
       }
       //剩下的文字就是新增的資料
-      if (inputText.trim() !== "") {
+      while (inputText.trim() !== "") {
         diffFlag = true;
         tempWIndex = inputText.search(/\S/i);
         tempWEnd = inputText.indexOf(" ",tempWIndex);
@@ -604,6 +586,7 @@ function simplifySearch(param) {
         }
       }
       _removeMenuBox();
+      _removeMessageBox();
       autoCompleteList = tempList;
       _checkAutoComplete();
     } else {
@@ -643,7 +626,25 @@ function simplifySearch(param) {
       }
     }
   }
-  
+  function _controlMsgMenu(e) {
+    if (messageNode === null) {
+      return false;
+    }
+    if(e.target === messageNode
+      || e.keyCode === constKeyCode.ESC
+      || e.keyCode === constKeyCode.TAB
+      || e.keyCode === constKeyCode.ENTER
+      ) {
+      var autoItemIndex = messageNode.getAttribute('data-auto-no');
+      var tempIndexArr = autoItemIndex.split(",");
+      if(e.target === messageNode){
+        autoNode.focus();
+      }
+
+      _removeInvalidWord(e, tempIndexArr[0] - 1);
+      e.preventDefault(); //停止冒泡事件
+    }     
+  }
   function _controlSelectMenu(e) {
     if (menuNode === null) {
       return false;
@@ -689,8 +690,11 @@ function simplifySearch(param) {
         autoItemIndex = menuNode.getAttribute('data-auto-no');
         tempIndexArr = autoItemIndex.split(",");
         tempAutoObj = autoCompleteList[tempIndexArr[0]];
+        if (menuNode.childElementCount == 2) { //若只有一個選項，按下ENTER等同按下TAB
+          tempFocusItem = 1;
+        }
         if (tempFocusItem == 0) {
-          tempAutoObj.removeObjFn();
+          _setAutoCompleteWord(tempIndexArr[tempIndexArr.length - 1]);
         } else {
           tempName = menuNode.children[tempFocusItem].getAttribute('data-name');
           tempIndex = menuNode.children[tempFocusItem].getAttribute('data-index');
@@ -705,12 +709,11 @@ function simplifySearch(param) {
             tempObj.setTextFn(menuNode.children[0].textContent);
           }
           tempAutoObj.setObjFn(tempObj);
+          if (tempIndexArr.length > 1) {
+            autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
+          }
+          _setAutoCompleteWord(tempIndexArr[0]);
         }
-        if (tempIndexArr.length > 1) {
-          autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
-        }
-        
-        _setAutoCompleteWord(tempIndexArr[0]);
         _removeMenuBox();
         _checkAutoComplete(tempIndexArr[0]-1);
         e.preventDefault(); //停止冒泡事件
@@ -765,19 +768,41 @@ function simplifySearch(param) {
     _checkAutoComplete(tempIndexArr[0]-1);
     e.preventDefault(); //停止冒泡事件
   }
+  function _createMessageBox(defaultWord, autoItemIndexArr) {
+    var divNode = document.createElement("div");
+    var height = autoNode.offsetHeight || autoNode.clientHeight; 
+    var width = autoNode.offsetWidth || autoNode.clientWidth;
+    var top = autoNode.offsetTop || autoNode.clientTop; 
+    var left = autoNode.offsetLeft || autoNode.clientLeft;
+    var spanNode;
+    divNode.id = "ssj-msg-" + uiRandomNo;
+    divNode.className = config.msgClass; 
+    divNode.setAttribute('data-auto-no', autoItemIndexArr.join(","));
+    divNode.style.position = "absolute";//absolute
+    divNode.style.zIndex = 98;
+    divNode.style.top = (top + height) + 'px';
+    divNode.style.left = left + 'px';
+    divNode.style.minWidth = width + 'px';
+    divNode.appendChild(document.createTextNode(defaultWord));
+    // divNode.addEventListener('click', _controlMsgMenu);
+    _removeMessageBox();
+    _addEventListener(divNode, 'click', _controlMsgMenu);
+    autoNode.parentNode.appendChild(divNode);
+    messageNode = divNode;
+  }
   //keepMappingKey[] = {"name": tempName, "index": i, "sort":tempSort};
-  function _createMenuBox(defaultWord, keepMappingKey, autoItemIndexArr) {
-    
+  function _createMenuBox(defaultWord, keepMappingKey, autoItemIndexArr) {    
     if (keepMenuFlag === true) {
       return;
     }
+    _removeMessageBox();
     var selectNode = document.createElement("ul");
     var height = autoNode.offsetHeight || autoNode.clientHeight; 
     var width = autoNode.offsetWidth || autoNode.clientWidth;
     var top = autoNode.offsetTop || autoNode.clientTop; 
     var left = autoNode.offsetLeft || autoNode.clientLeft;
     var optionNode;
-    var divNode;
+    var spanNode;
     var i;
     var tempMappingObj;
     var tempTitle;
@@ -789,6 +814,7 @@ function simplifySearch(param) {
     selectNode.setAttribute('data-select', 0);
     selectNode.setAttribute('data-auto-no', autoItemIndexArr.join(","));
     selectNode.style.position = "absolute";//absolute
+    selectNode.style.zIndex = 99;
     selectNode.style.top = (top + height) + 'px';
     selectNode.style.left = left + 'px';
     selectNode.style.minWidth = width + 'px';
@@ -821,14 +847,15 @@ function simplifySearch(param) {
       if (config.hideTag === false) {
         tempTitle = nodeDataList[tempName].title;
         if (tempTitle !== '' && tempTitle !== undefined) {
-          divNode = document.createElement("span");
-          divNode.className = config.tagClass;
-          // divNode.style.float = "right";
-          divNode.appendChild(document.createTextNode(tempTitle));
-          optionNode.appendChild(divNode);
+          spanNode = document.createElement("span");
+          spanNode.className = config.tagClass;
+          // spanNode.style.float = "right";
+          spanNode.appendChild(document.createTextNode(tempTitle));
+          optionNode.appendChild(spanNode);
         }
       }
-      optionNode.addEventListener('click', _clickMenuItem);
+      _addEventListener(optionNode, 'click', _clickMenuItem);
+      // optionNode.addEventListener('click', _clickMenuItem);
       selectNode.appendChild(optionNode);
     }
     if (menuNode !== null) {
@@ -862,6 +889,13 @@ function simplifySearch(param) {
       keepMenuFlag = false;
     }
   }
+  function _removeMessageBox() {
+    if (messageNode !== null) {
+      messageNode.remove();
+      messageNode = null;
+      keepMenuFlag = false;
+    }
+  }
 
   function _checkAutoComplete(start) {
     var tempReturn;
@@ -892,9 +926,14 @@ function simplifySearch(param) {
     if (tempFocusAutoObj === undefined) {
       return false;
     }
-    if (tempFocusAutoObj.getObjFn() !== undefined && resetFlag !== true) {
+    if (tempFocusAutoObj.getObjFn() !== undefined) {
       // tempFocusAutoObj.getObjFn().activeFn();
-      return false;
+      if (resetFlag !== true) {
+        return false;
+      } else {
+        //TODO
+        return false;
+      }
     }
     //抓取前後未指定obj的輸入值
     rangeArr.push(autoObjIndex);
@@ -955,33 +994,38 @@ function simplifySearch(param) {
     });
     if (keepMappingKey.length === 0) {
       _removeMenuBox();
-      return false;
+      _createMessageBox(tempWords, rangeArr);
+      return -1;
     } else {
       _createMenuBox(tempWords, keepMappingKey, rangeArr);
       return true;
     }
   }
   /**
-   * @param  int autoItemIndex 片語的編號
+   * @param  int autoItemIndex 片語的編號（注意有可能為 -1）
    * @param  boolean addSpaceFlag  在片語編號後方加入一個空白
    * @return string
    */
   function _getAutoCompleteWords(autoItemIndex, addSpaceFlag) {
     var tempText = "";
-    var addSort = 0;
+    if (autoItemIndex === -1 && addSpaceFlag) {
+      tempText = " ";
+    }
     for (var i = 0; i < autoCompleteList.length; i++) {
-
       autoCompleteList[i].sort = tempText.length;
-      tempText = tempText + autoCompleteList[i].getTextFn() + " ";
+      if (i > 0) {
+        tempText = tempText + " ";
+      }
+      tempText = tempText + autoCompleteList[i].getTextFn();
       if (autoItemIndex === i && addSpaceFlag) {
         tempText = tempText + " ";
       }
     }
-    return tempText.trim();
+    return tempText;
   }
   /**
    * 設定 auto complete 整個句子外，還可指定游標位置
-   * @param  int autoItemIndex 片語的編號
+   * @param  int autoItemIndex 片語的編號 (注意有可能為 -1)
    * @param  boolean addSpaceFlag  在片語編號後方加入一個空白且游標在空白後
    * @return void
    */
@@ -989,10 +1033,14 @@ function simplifySearch(param) {
     var tempAutoObj;
     var newPosition;
     autoNode.value = _getAutoCompleteWords(autoItemIndex, addSpaceFlag);
-    if (autoItemIndex !== undefined) {
+    if (autoItemIndex === -1) {
+      if (addSpaceFlag) {
+        _setKeyinPosition(autoNode, 0);
+      }
+    } else if (autoItemIndex !== undefined) {
       tempAutoObj = autoCompleteList[autoItemIndex];
       newPosition = tempAutoObj.sort + tempAutoObj.getTextFn().length + ((addSpaceFlag)? 1 : 0);
-      _setKeyinPosition(autoNode, newPosition) ;
+      _setKeyinPosition(autoNode, newPosition);
     }
   }
 
@@ -1019,6 +1067,7 @@ function simplifySearch(param) {
       }
       _removeMenuBox();
     }
+    _removeMessageBox();
   }
 
   function _resetForm() {
@@ -1037,7 +1086,105 @@ function simplifySearch(param) {
     defaultValueList[tempName].push({"obj": itemObj, "value": tempValue});
   }
   //Object class ----------------------------------
-  
+  function SSJNodeItemObj() {
+    this.title = undefined;
+    this.defaultArr = [];
+    this.multiple = false;
+    this.noShowInMenuFlag = false;
+    this.itemObjs = [];
+    this.parentNode = null;
+
+  }
+  SSJNodeItemObj.prototype.setTitleFn = function(inTitle) {
+    this.title = inTitle;
+  };
+  //when addIgnoreById or addIgnoreByDom 
+  SSJNodeItemObj.prototype.removeItemObjFn = function(domNode) {
+    var i;
+    var tempObj;
+    if (domNode.tagName == "SELECT") {
+      return;
+    } else {
+      i = -1;
+      while (tempObj = this.itemObjs[++i]) {
+        if (tempObj.node === domNode) {
+          this.itemObjs.splice(i,1);
+          //刪除預設值的設定
+          if (tempObj instanceof TextObj) {
+            this.defaultArr.splice(i,1);
+          } else {
+            tempIndex = _arrayIndexOf(this.defaultArr, domNode);
+            if (tempIndex !== -1) {
+              this.defaultArr.splice(tempIndex,1);
+            }
+          }
+          break;
+        }
+      }
+    }
+  };
+  SSJNodeItemObj.prototype.changeRegexpFn = function(domNode, regexp) {
+    var i = -1;
+    while (tempObj = this.itemObjs[++i]) {
+      if (!(tempObj instanceof TextObj)) {
+        _warning("This dom cannot set RegExp");
+        return;
+      }
+      if (tempObj.node === domNode) {
+        tempObj.setRegexpFn(regexp);
+        if (!regexp.test(this.defaultArr[i])) {
+          _warning("Text default value be cleared! because does not match for new RegExp.");
+          this.defaultArr[i] = "";
+        }
+        break;
+      }
+    }
+    
+  }
+
+  SSJNodeItemObj.prototype.addItemObjFn = function(itemObj, inParentNode) {
+    var i;
+    var tempNode;
+    //建立預設值
+    this.title = this.title || _getLabelTitle(inParentNode || itemObj.node);
+    this.multiple = this.multiple || itemObj.multiple;
+
+    //增加 itemObj
+    this.itemObjs.push(itemObj);
+    //調整 defaultArr, noShowInMenuFlag
+
+    if (itemObj instanceof TextObj) {
+      //text 對應 index 儲存目前文字
+      this.defaultArr.push(itemObj.value);
+      if (itemObj.usedFlag && !this.multiple) {
+        this.noShowInMenuFlag = true;
+      }
+    } else if (itemObj instanceof OptionObj) {
+      if (this.parentNode === null && inParentNode !== undefined) {
+        this.parentNode = inParentNode;
+      }
+      if (this.defaultArr.length == 0) {
+        //不論 config.ignoreEmptyValue 是否有排除，都要記錄預設選項
+        i = 0;
+        while (tempNode = inParentNode.selectedOptions[i++]) {
+          this.defaultArr.push(tempNode);
+        }
+      }
+      if (itemObj.usedFlag) {
+        if (!this.multiple) {
+          this.noShowInMenuFlag = true;
+        }
+      }   
+    } else if (itemObj instanceof CheckObj) {
+      if (itemObj.usedFlag) {
+        this.defaultArr.push(itemObj.node);
+        if (!this.multiple) {
+          this.noShowInMenuFlag = true;
+        }
+      }
+    } 
+  };
+
   function autoCompleteItemObj(inText) {
     var text = inText;
     var custemObj; //TextObj,OptionObj,CheckObj...
@@ -1048,7 +1195,7 @@ function simplifySearch(param) {
       custemObj = inObj;
       custemObj.activeFn();
     };
-    this.getObjFn = function () {
+    this.getObjFn = function() {
       return custemObj;
     };
     this.setTextFn = function(inText) {
@@ -1235,6 +1382,7 @@ function simplifySearch(param) {
     }
 
   }
+
   function _getElementsByAttribute(attribute, value, tagName, parentNode) {
     var tempSelector;
     var tempNodeArr;
