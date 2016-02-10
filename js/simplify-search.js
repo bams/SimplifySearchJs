@@ -101,7 +101,6 @@ function simplifySearch(param) {
     _addEventListener(autoNode, "keydown", _controlMsgMenu); //控制message選單
     _addEventListener(autoNode, "keyup", _checkWordChange); //輸入法異動只會觸發up事件
     _addEventListener(document, "click",_checkIfBlurAutoComplete);
-    _addEventListener(autoNode, "blur", _checkIfBlurAutoComplete);
     _addEventListener(autoNode, "click", _clickInputEventAction);
 
 
@@ -487,6 +486,7 @@ function simplifySearch(param) {
 
   function _clickInputEventAction(e) {
     _keyDownEventAction(e);
+    var tempEvent = _eventCompatible(e);
     var tempSlice;
     var i;
     var tempAutoObj;
@@ -503,20 +503,14 @@ function simplifySearch(param) {
   }
 
   function _checkIfBlurAutoComplete(e) {
-    console.log("into _checkIfBlurAutoComplete");
-    if (
-      document.activeElement !== autoNode
-      && e.target !== autoNode
-      && document.activeElement !== menuNode  
-      && e.target.parentNode !== menuNode 
-      && e.target.parentNode.parentNode !== menuNode
-      ) {
-      
-       _removeInvalidWord(e);
+    var tempEvent = _eventCompatible(e); 
+    if (document.activeElement !== autoNode && tempEvent.target !== autoNode) {
+        _removeInvalidWord(e);
     }
   }
 
   function _checkWordChange(e) {
+    var tempEvent = _eventCompatible(e);
     var inputText = autoNode.value.trim();
     var tempList = [];
     var tempRemoveList = [];
@@ -629,25 +623,27 @@ function simplifySearch(param) {
     if (messageNode === null) {
       return false;
     }
-    if(e.target === messageNode
+    var tempEvent = _eventCompatible(e);
+    if(tempEvent.target === messageNode
       || e.keyCode === constKeyCode.ESC
       || e.keyCode === constKeyCode.TAB
       || e.keyCode === constKeyCode.ENTER
       ) {
       var autoItemIndex = messageNode.getAttribute('data-auto-no');
       var tempIndexArr = autoItemIndex.split(",");
-      if(e.target === messageNode){
+      if(tempEvent.target === messageNode){
         autoNode.focus();
       }
 
       _removeInvalidWord(e, tempIndexArr[0] - 1);
-      e.preventDefault(); //停止冒泡事件
+      tempEvent.preventDefault(); //停止冒泡事件
     }     
   }
   function _controlSelectMenu(e) {
     if (menuNode === null) {
       return false;
     }
+    var tempEvent = _eventCompatible(e);
     var tempFocusItem = menuNode.getAttribute('data-select');
     var autoItemIndex;
     var tempIndexArr;
@@ -715,13 +711,14 @@ function simplifySearch(param) {
         }
         _removeMenuBox();
         _checkAutoComplete(tempIndexArr[0]-1);
-        e.preventDefault(); //停止冒泡事件
+        tempEvent.preventDefault(); //停止冒泡事件
         break;
     }
   }
 
   function _clickMenuItem(e) {
-    var tempNode = e.target;
+    var tempEvent = _eventCompatible(e);
+    var tempNode = tempEvent.target;
     var index;
     var autoItemIndex;
     var tempIndexArr
@@ -765,7 +762,7 @@ function simplifySearch(param) {
     _removeMenuBox();
     autoNode.focus();
     _checkAutoComplete(tempIndexArr[0]-1);
-    e.preventDefault(); //停止冒泡事件
+    tempEvent.preventDefault(); //停止冒泡事件
   }
   function _createMessageBox(defaultWord, autoItemIndexArr) {
     var divNode = document.createElement("div");
@@ -1013,7 +1010,7 @@ function simplifySearch(param) {
     }
     return tempText;
   }
-  /**
+  /**ƒ
    * 設定 auto complete 整個句子外，還可指定游標位置
    * @param  int autoItemIndex 片語的編號 (注意有可能為 -1)
    * @param  boolean addSpaceFlag  在片語編號後方加入一個空白且游標在空白後
@@ -1408,6 +1405,23 @@ function simplifySearch(param) {
       domNode.addEventListener(eventName, callback);
     } else { //lte ie8
       domNode.attachEvent("on" + eventName, callback);
+    }
+  }
+
+  function _eventCompatible(e) {
+    e = e || window.event;  //lte ie8 (call by reference!)
+    var target = e.target || e.srcElement;
+    function preventDefault(){
+      (e.preventDefault)? e.preventDefault(): e.returnValue = false;
+    }
+    function stopPropagation(){
+      (e.stopPropagation)? e.stopPropagation(): e.cancelBubble = true;
+    }
+    return {
+      "type": e.type,
+      "target": target,
+      "preventDefault": preventDefault,
+      "stopPropagation": stopPropagation,
     }
   }
   return returnParam;
