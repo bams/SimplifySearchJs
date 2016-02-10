@@ -35,7 +35,6 @@ function simplifySearch(param) {
   var configIgnoreList = [];
   
   var keyinPosition = 0; //輸入框的游標位置（有支援度限制）
-  var keepMenuFlag = false; //當有其他選項的選單即將觸發，選單已存在就不更換
   var constKeyCode = {
     "UP": 38,
     "DOWN": 40,
@@ -792,10 +791,10 @@ function simplifySearch(param) {
   }
   //keepMappingKey[] = {"name": tempName, "index": i, "sort":tempSort};
   function _createMenuBox(defaultWord, keepMappingKey, autoItemIndexArr) {    
-    if (keepMenuFlag === true) {
+    _removeMessageBox();
+    if (menuNode !== null) {
       return;
     }
-    _removeMessageBox();
     var selectNode = document.createElement("ul");
     var height = autoNode.offsetHeight || autoNode.clientHeight; 
     var width = autoNode.offsetWidth || autoNode.clientWidth;
@@ -858,10 +857,6 @@ function simplifySearch(param) {
       // optionNode.addEventListener('click', _clickMenuItem);
       selectNode.appendChild(optionNode);
     }
-    if (menuNode !== null) {
-      menuNode.remove();
-      menuNode = null;
-    } 
     autoNode.parentNode.appendChild(selectNode);
     menuNode = selectNode;
   }
@@ -886,14 +881,12 @@ function simplifySearch(param) {
     if (menuNode !== null) {
       menuNode.remove();
       menuNode = null;
-      keepMenuFlag = false;
     }
   }
   function _removeMessageBox() {
     if (messageNode !== null) {
       messageNode.remove();
       messageNode = null;
-      keepMenuFlag = false;
     }
   }
 
@@ -904,9 +897,6 @@ function simplifySearch(param) {
       tempReturn = _selectAutoComplete(i);
       if (tempReturn !== true && tempReturn !== false && /^\d+$/.test(tempReturn)) {
         i = tempReturn;
-      }
-      if ( tempReturn !== false) {
-        keepMenuFlag = true;
       }
     }
   }
