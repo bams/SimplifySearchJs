@@ -29,8 +29,7 @@ function simplifySearch(param) {
   var autoCompleteList = []; //輸入框內的文字切割物件
   var formNode = document.getElementById(config.formId);
   var autoNode = null; //輸入框
-  var menuNode = null; //選單
-  var messageNode = null; //訊息/錯誤
+  var menuObj; //選單
   var configRegExpList = []; //dom 可能會重複，若重複則使用最後一次的設定
   var configIgnoreList = [];
   
@@ -74,8 +73,6 @@ function simplifySearch(param) {
     "addIgnoreByDom": addIgnoreByDom,
     "addIgnoreById": addIgnoreById,
     "setTitleByName": setTitleByName,
-    // "setTextCanMultipleByDom": setTextCanMultipleByDom,
-    // "setTextCanMultipleById": setTextCanMultipleById,
   };
 
   if (config.debugMode) {
@@ -93,12 +90,11 @@ function simplifySearch(param) {
       formNode.style.display = 'none';
     }
     _setAutoInputNode();
-    _analysisNodeData();
-
+    menuObj = new BaseMenu();
+    _analysisNodeData(null, true);
     //綁定autoComplete事件
     _addEventListener(autoNode, "keydown", _keyDownEventAction); //抓到游標原始位置
-    _addEventListener(autoNode, "keydown", _controlSelectMenu); //控制autoComplete選單
-    _addEventListener(autoNode, "keydown", _controlMsgMenu); //控制message選單
+    _addEventListener(autoNode, "keydown", menuObj.controlBaseEvent);//控制選單
     _addEventListener(autoNode, "keyup", _checkWordChange); //輸入法異動只會觸發up事件
     _addEventListener(document, "click",_checkIfBlurAutoComplete);
     _addEventListener(autoNode, "click", _clickInputEventAction);
@@ -106,6 +102,7 @@ function simplifySearch(param) {
 
     return returnParam;
   }
+  //TODO
   function addDomDataMapping(inNode, valueToTextJson) {
     return returnParam;
   }
@@ -153,28 +150,7 @@ function simplifySearch(param) {
     nodeDataList[tempName].setTitleFn(inTitle);
     return returnParam;
   }
-  // function setTextCanMultipleById(id) {
-  //   var tempNode = document.getElementById(id);
-  //   if (tempNode === undefined || tempNode === null) {
-  //     _warning('function setTextCanMultipleById : getElementById("' + id + '") no exist');
-  //     return returnParam;
-  //   }
-  //   return setTextCanMultipleByDom(tempNode);
-  // }
-  // function setTextCanMultipleByDom(textNode) {
-  //   var custemTagType;
-  //   if (textNode === undefined || textNode === null) {
-  //     _warning("function setTextCanMultipleByDom param is undefined");
-  //     return returnParam;
-  //   }
-  //   custemTagType = _getCustomTagType(textNode);
-  //   if (custemTagType === constTagType.INPUT_TEXT || custemTagType === constTagType.TEXTAREA) {
-  //     textNode.setAttribute('data-ssj-multiple',true);
-  //   } else {
-  //     _warning("function setTextCanMultiple param not allow <"+ textNode.tagName.toLowerCase() +"> object");
-  //   }
-  //   return returnParam;
-  // }
+
   function logParam() {
     return {
       "config": config,
@@ -183,7 +159,7 @@ function simplifySearch(param) {
       "autoCompleteList": autoCompleteList,
       "nodeDataList": nodeDataList,
       "autoNode": autoNode,
-      "menuNode": menuNode,
+      "menuObj": menuObj,
       "formNode": formNode,
     };
   }
@@ -234,10 +210,12 @@ function simplifySearch(param) {
     }
     return tempTitle;
   }
-  function _analysisNodeData() {
+  function _analysisNodeData(e, firstFlag) {
     var i;
     var tempNode;
     var tempTagType;
+    autoCompleteList = [];
+    nodeDataList = {};
     //分析表單內的資料
     i = 0;
     while (tempNode = formNode[i++]) {
@@ -264,24 +242,38 @@ function simplifySearch(param) {
         case constTagType.TEXTAREA:
         case constTagType.INPUT_TEXT:
           _addNodeDataList(new TextObj(tempNode));
+          if (firstFlag) {
+            _addEventListener(tempNode,'keyup',_analysisNodeData);
+          }
           break;
         case constTagType.INPUT_RADIO:
         case constTagType.INPUT_CHECKBOX:
           _addNodeDataList(new CheckObj(tempNode));
+          if (firstFlag) {
+            _addEventListener(tempNode,'change',_analysisNodeData);
+          }
           break;
         case constTagType.SELECT_ONE:
         case constTagType.SELECT_MULTIPLE:
           _analysisSelect(tempNode);
+          if (firstFlag) {
+            _addEventListener(tempNode,'change',_analysisNodeData);
+          }
           break;
       }
     }
+    _setAutoCompleteWord();
   }
+
   function _addNodeDataList(itemObj,parentNode) {
     var tempName = itemObj.name;
     if (nodeDataList[tempName] === undefined) {
       nodeDataList[tempName] = new SSJNodeItemObj();
     }
     nodeDataList[tempName].addItemObjFn(itemObj,parentNode);
+    if (itemObj.usedFlag) {
+      autoCompleteList.push(new autoCompleteItemObj(itemObj.text, itemObj));
+    }
   }
 
   function _analysisMappingLabel(domNode, parentNode) {
@@ -303,8 +295,7 @@ function simplifySearch(param) {
       return tempName;
     }
   }
-  function _analysisSelect(domNode)
-  {
+  function _analysisSelect(domNode) {
     var tempObj;
     var tempName = domNode.name.replace(/\[.*\]/g, "");
     var tempMultiple = ((domNode.getAttribute('multiple') !== null)? true : false);
@@ -466,22 +457,13 @@ function simplifySearch(param) {
     return true;
   }
 
-  function _addWordsList(itemObj) {
-    if (wordsList.length != mappingList.length) {
-      throw "simplify-search-js: ooops.... data analysis error";
-      return; //異常
-    }
-    wordsList.push(itemObj.text);
-    mappingList.push(itemObj);
-  }
-
-  function _addRegExpList(itemObj) {
-    regExpList.push(itemObj);
-  }
-
   //keyin & menu event control --------------------------
   function _keyDownEventAction(e) {
+    var tempEvent = _eventCompatible(e);
     keyinPosition = _getKeyinPosition(autoNode);
+    if (menuObj.getMenuNodeFn() === null && e.keyCode === constKeyCode.DOWN){
+      tempEvent.preventDefault();
+    }
   }
 
   function _clickInputEventAction(e) {
@@ -490,12 +472,15 @@ function simplifySearch(param) {
     var tempSlice;
     var i;
     var tempAutoObj;
-    if (menuNode === null) {
+    if (menuObj.getMenuNodeFn() === null) {
       tempSlice = autoNode.value.slice(0,keyinPosition).length;
       i = autoCompleteList.length;
       while (tempAutoObj =  autoCompleteList[--i]) {
         if (tempAutoObj.sort <= tempSlice) {
-          _selectAutoComplete(i, true);
+          if (tempAutoObj.sort + tempAutoObj.getTextFn().length >= tempSlice) {
+            _selectAutoComplete(i, true);
+          }
+          
           break;
         }
       }
@@ -539,7 +524,7 @@ function simplifySearch(param) {
         tempWord = " " + tempAutoObj.getTextFn() + " ";
         tempWIndex = inputText.indexOf(tempWord);
         if (tempWIndex !== -1) {
-          inputText = inputText.replace(tempWord, new Array(tempWord.length).join(" ")); //only replace first word
+          inputText = inputText.replace(tempWord, new Array(tempWord.length + 1).join(" ")); //only replace first word
           tempAutoObj.sort = tempWIndex;
           tempList.push(tempAutoObj);
         } else {
@@ -553,7 +538,7 @@ function simplifySearch(param) {
         tempWIndex = inputText.search(/\S/i);
         tempWEnd = inputText.indexOf(" ",tempWIndex);
         tempWord = inputText.substring(tempWIndex,tempWEnd);
-        inputText = inputText.replace(tempWord, new Array(tempWord.length).join(" ")); //only replace first word
+        inputText = inputText.replace(tempWord, new Array(tempWord.length + 1).join(" ")); //only replace first word
         tempAutoObj = new autoCompleteItemObj(tempWord);
         tempAutoObj.sort = tempWIndex;
         tempList.push(tempAutoObj);
@@ -570,22 +555,20 @@ function simplifySearch(param) {
         tempObj = tempAutoObj.getObjFn();
         if (tempObj !== undefined) {
           tempName = tempObj.name;
-          if (!nodeDataList[tempName].multiple) {
-            nodeDataList[tempName].noShowInMenuFlag = false;
-          }
-          tempObj.usedFlag = false;
-          tempObj.cancelFn();
+          tempObj.cancelFn(); //tempObj.usedFlag = false;
           tempAutoObj.removeObjFn();
         }
       }
-      _removeMenuBox();
-      _removeMessageBox();
+      menuObj.removeMenuNodeFn();
+    
+    
       autoCompleteList = tempList;
       _checkAutoComplete();
     } else {
-      if (menuNode === null) { 
+      if (menuObj.getMenuNodeFn() === null) { 
         switch (e.keyCode) {
           case constKeyCode.SPACE:
+            //空白若是落在文字中就不會是diffFlag=false
             //如果空白前後有未設定的 autoObj 就不執行清除
             tempSlice = autoNode.value.slice(0, keyinPosition).length;
             i = autoCompleteList.length;
@@ -593,16 +576,18 @@ function simplifySearch(param) {
               if (
                 (tempSlice < tempAutoObj.sort 
                   && tempSlice >= tempAutoObj.sort - 2
-                ) 
+                ) //判斷空白落在那個片段之前
                 && tempAutoObj.getObjFn() !== undefined 
                 && autoCompleteList[i - 1].getObjFn() !== undefined
                 ) {
                   _removeInvalidWord(e, i - 1);
-              } else if(tempSlice < tempAutoObj.sort - 2) {
-                break;
-              }
+                  break;
+              } else if (tempSlice > tempAutoObj.sort - 2) {
+                break; //while
+              }   
             }
-            break;
+            break; //switch
+
           case constKeyCode.TAB:
             _removeInvalidWord(e);
             break;
@@ -611,7 +596,11 @@ function simplifySearch(param) {
             i = autoCompleteList.length;
             while (tempAutoObj =  autoCompleteList[--i]) {
               if (tempAutoObj.sort <= tempSlice) {
-                _selectAutoComplete(i, true);
+                if (tempAutoObj.sort + tempAutoObj.getTextFn().length >= tempSlice) {
+                  _selectAutoComplete(i, true);
+                  tempEvent.preventDefault();
+                }
+                
                 break;
               }
             }
@@ -619,273 +608,7 @@ function simplifySearch(param) {
       }
     }
   }
-  function _controlMsgMenu(e) {
-    if (messageNode === null) {
-      return false;
-    }
-    var tempEvent = _eventCompatible(e);
-    if(tempEvent.target === messageNode
-      || e.keyCode === constKeyCode.ESC
-      || e.keyCode === constKeyCode.TAB
-      || e.keyCode === constKeyCode.ENTER
-      ) {
-      var autoItemIndex = messageNode.getAttribute('data-auto-no');
-      var tempIndexArr = autoItemIndex.split(",");
-      if(tempEvent.target === messageNode){
-        autoNode.focus();
-      }
 
-      _removeInvalidWord(e, tempIndexArr[0] - 1);
-      tempEvent.preventDefault(); //停止冒泡事件
-    }     
-  }
-  function _controlSelectMenu(e) {
-    if (menuNode === null) {
-      return false;
-    }
-    var tempEvent = _eventCompatible(e);
-    var tempFocusItem = menuNode.getAttribute('data-select');
-    var autoItemIndex;
-    var tempIndexArr;
-    var tempAutoObj;
-    var tempName;
-    var tempIndex;
-    var tempObj;
-
-    switch (e.keyCode) {
-      case constKeyCode.ESC: //esc
-        _removeMenuBox();
-        break;
-      case constKeyCode.UP: //up
-        menuNode.children[tempFocusItem].className = "";
-        tempFocusItem--;
-        if (tempFocusItem < 0) {
-          tempFocusItem = menuNode.childElementCount-1;
-        }
-        menuNode.children[tempFocusItem].className = "focus";
-        menuNode.setAttribute('data-select', tempFocusItem);
-        _focusMenuItem();
-        break;
-      case constKeyCode.DOWN: //down
-        menuNode.children[tempFocusItem].className = "";
-        tempFocusItem++;
-        if (tempFocusItem > menuNode.childElementCount-1) {
-          tempFocusItem = 0;
-        }
-        menuNode.children[tempFocusItem].className = "focus";
-        menuNode.setAttribute('data-select', tempFocusItem);
-        _focusMenuItem();
-        break;
-      case constKeyCode.TAB:
-        if (tempFocusItem == 0) {
-          tempFocusItem = 1;
-        }
-        //break; //故意觸發 ENTER 動作
-      case constKeyCode.ENTER: //enter
-        autoItemIndex = menuNode.getAttribute('data-auto-no');
-        tempIndexArr = autoItemIndex.split(",");
-        tempAutoObj = autoCompleteList[tempIndexArr[0]];
-        if (menuNode.childElementCount == 2) { //若只有一個選項，按下ENTER等同按下TAB
-          tempFocusItem = 1;
-        }
-        if (tempFocusItem == 0) {
-          _setAutoCompleteWord(tempIndexArr[tempIndexArr.length - 1]);
-        } else {
-          tempName = menuNode.children[tempFocusItem].getAttribute('data-name');
-          tempIndex = menuNode.children[tempFocusItem].getAttribute('data-index');
-          tempObj = nodeDataList[tempName].itemObjs[tempIndex];
-          if (!nodeDataList[tempName].multiple) {
-            nodeDataList[tempName].noShowInMenuFlag = true;
-          } else {
-            tempObj.usedFlag = true;
-          }
-          
-          if (tempObj instanceof TextObj) {
-            tempObj.setTextFn(menuNode.children[0].textContent);
-          }
-          tempAutoObj.setObjFn(tempObj);
-          if (tempIndexArr.length > 1) {
-            autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
-          }
-          _setAutoCompleteWord(tempIndexArr[0]);
-        }
-        _removeMenuBox();
-        _checkAutoComplete(tempIndexArr[0]-1);
-        tempEvent.preventDefault(); //停止冒泡事件
-        break;
-    }
-  }
-
-  function _clickMenuItem(e) {
-    var tempEvent = _eventCompatible(e);
-    var tempNode = tempEvent.target;
-    var index;
-    var autoItemIndex;
-    var tempIndexArr
-    var tempAutoObj;
-    var tempName;
-    var tempIndex;
-    var tempObj;
-    if (tempNode.tagName != "LI") {
-      if (tempNode.className == config.tagClass && tempNode.parentNode.tagName == "LI") {
-        tempNode = tempNode.parentNode;
-      } else {
-        return;
-      }
-    }
-    index = _arrayIndexOf(menuNode.children, tempNode);
-    if (index == -1 || index == 0) {
-      return;
-    } else {
-      menuNode.setAttribute('data-select', index);
-      tempNode.className = "focus";
-    }
-    autoItemIndex = menuNode.getAttribute('data-auto-no');
-    tempIndexArr = autoItemIndex.split(",");
-    tempAutoObj = autoCompleteList[tempIndexArr[0]];
-    tempName = menuNode.children[index].getAttribute('data-name');
-    tempIndex = menuNode.children[index].getAttribute('data-index');
-    tempObj = nodeDataList[tempName].itemObjs[tempIndex];
-    if (!nodeDataList[tempName].multiple) {
-      nodeDataList[tempName].noShowInMenuFlag = true;
-    } else {
-      tempObj.usedFlag = true;
-    }
-    if (tempObj instanceof TextObj) {
-      tempObj.setTextFn(menuNode.children[0].textContent);
-    }
-    tempAutoObj.setObjFn(tempObj);
-    if (tempIndexArr.length > 1) {
-      autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
-    }
-    _setAutoCompleteWord(tempIndexArr[0]);
-    _removeMenuBox();
-    autoNode.focus();
-    _checkAutoComplete(tempIndexArr[0]-1);
-    tempEvent.preventDefault(); //停止冒泡事件
-  }
-  function _createMessageBox(defaultWord, autoItemIndexArr) {
-    var divNode = document.createElement("div");
-    var height = autoNode.offsetHeight || autoNode.clientHeight; 
-    var width = autoNode.offsetWidth || autoNode.clientWidth;
-    var top = autoNode.offsetTop || autoNode.clientTop; 
-    var left = autoNode.offsetLeft || autoNode.clientLeft;
-    var spanNode;
-    divNode.id = "ssj-msg-" + uiRandomNo;
-    divNode.className = config.msgClass; 
-    divNode.setAttribute('data-auto-no', autoItemIndexArr.join(","));
-    divNode.style.position = "absolute";//absolute
-    divNode.style.zIndex = 98;
-    divNode.style.top = (top + height) + 'px';
-    divNode.style.left = left + 'px';
-    divNode.style.minWidth = width + 'px';
-    divNode.appendChild(document.createTextNode(defaultWord));
-    // divNode.addEventListener('click', _controlMsgMenu);
-    _removeMessageBox();
-    _addEventListener(divNode, 'click', _controlMsgMenu);
-    autoNode.parentNode.appendChild(divNode);
-    messageNode = divNode;
-  }
-  //keepMappingKey[] = {"name": tempName, "index": i, "sort":tempSort};
-  function _createMenuBox(defaultWord, keepMappingKey, autoItemIndexArr) {    
-    _removeMessageBox();
-    if (menuNode !== null) {
-      return;
-    }
-    var selectNode = document.createElement("ul");
-    var height = autoNode.offsetHeight || autoNode.clientHeight; 
-    var width = autoNode.offsetWidth || autoNode.clientWidth;
-    var top = autoNode.offsetTop || autoNode.clientTop; 
-    var left = autoNode.offsetLeft || autoNode.clientLeft;
-    var optionNode;
-    var spanNode;
-    var i;
-    var tempMappingObj;
-    var tempTitle;
-    var tempName;
-    var tempIndex;
-    var tempObj;
-    selectNode.id = "ssj-menu-" + uiRandomNo; 
-    selectNode.className = config.menuClass;
-    selectNode.setAttribute('data-select', 0);
-    selectNode.setAttribute('data-auto-no', autoItemIndexArr.join(","));
-    selectNode.style.position = "absolute";//absolute
-    selectNode.style.zIndex = 99;
-    selectNode.style.top = (top + height) + 'px';
-    selectNode.style.left = left + 'px';
-    selectNode.style.minWidth = width + 'px';
-
-    optionNode = document.createElement("li");
-    optionNode.setAttribute('data-name', '');
-    optionNode.setAttribute('data-index', '');
-    optionNode.appendChild(document.createTextNode(defaultWord));
-
-    optionNode.style.display = "none";
-    optionNode.className = "focus";
-    selectNode.appendChild(optionNode);
-
-    i = 0;
-    var optionText;
-    while (tempMappingObj = keepMappingKey[i++]) {
-      tempName = tempMappingObj.name;
-      tempIndex = tempMappingObj.index;
-      tempObj = nodeDataList[tempName].itemObjs[tempIndex];
-      optionNode = document.createElement("li");
-      optionNode.setAttribute('data-name', tempName);
-      optionNode.setAttribute('data-index', tempIndex);
-      if (tempObj instanceof TextObj) {
-        optionText = defaultWord;
-      } else {
-
-        optionText = tempObj.text;
-      }
-      optionNode.appendChild(document.createTextNode(optionText));
-      if (config.hideTag === false) {
-        tempTitle = nodeDataList[tempName].title;
-        if (tempTitle !== '' && tempTitle !== undefined) {
-          spanNode = document.createElement("span");
-          spanNode.className = config.tagClass;
-          // spanNode.style.float = "right";
-          spanNode.appendChild(document.createTextNode(tempTitle));
-          optionNode.appendChild(spanNode);
-        }
-      }
-      _addEventListener(optionNode, 'click', _clickMenuItem);
-      // optionNode.addEventListener('click', _clickMenuItem);
-      selectNode.appendChild(optionNode);
-    }
-    autoNode.parentNode.appendChild(selectNode);
-    menuNode = selectNode;
-  }
-
-
-  function _focusMenuItem() {
-    if (menuNode === null) {
-      return false;
-    }
-    var focusNode = menuNode.children[menuNode.getAttribute('data-select')];
-    if (focusNode.offsetTop < menuNode.scrollTop) {
-      var tempScroll = focusNode.offsetTop + focusNode.offsetHeight - menuNode.offsetHeight;
-      menuNode.scrollTop = (tempScroll < 0)? 0 : tempScroll;
-      return;
-    } else if (focusNode.offsetTop + focusNode.offsetHeight > menuNode.scrollTop + menuNode.offsetHeight) {
-      menuNode.scrollTop = focusNode.offsetTop;
-      return;
-    }
-  }
-
-  function _removeMenuBox() {
-    if (menuNode !== null) {
-      menuNode.remove();
-      menuNode = null;
-    }
-  }
-  function _removeMessageBox() {
-    if (messageNode !== null) {
-      messageNode.remove();
-      messageNode = null;
-    }
-  }
 
   function _checkAutoComplete(start) {
     var tempReturn;
@@ -913,17 +636,31 @@ function simplifySearch(param) {
     if (tempFocusAutoObj === undefined) {
       return false;
     }
+    //抓取前後未指定obj的輸入值
+    rangeArr.push(autoObjIndex);
     if (tempFocusAutoObj.getObjFn() !== undefined) {
-      // tempFocusAutoObj.getObjFn().activeFn();
       if (resetFlag !== true) {
         return false;
       } else {
-        //TODO
-        return false;
+        tempName = tempFocusAutoObj.getObjFn().name;
+        
+        if (nodeDataList[tempName] === undefined) {
+          return false;
+        }
+        i = -1;
+        while (tempObj = nodeDataList[tempName].itemObjs[++i]) {
+          if (tempObj.usedFlag) {
+            if (tempObj === tempFocusAutoObj.getObjFn()) {
+              tempWords = {"name": tempName, "index": i, "sort": -1};
+            }
+            continue;
+          } 
+          keepMappingKey.push({"name": tempName, "index": i, "sort": i});
+        }
+        menuObj.createChangeMenuFn(tempWords, rangeArr, keepMappingKey);
+        return true;
       }
     }
-    //抓取前後未指定obj的輸入值
-    rangeArr.push(autoObjIndex);
     tempWords = tempFocusAutoObj.getTextFn();
     i = autoObjIndex;
     while (tempAutoObj = autoCompleteList[--i]) {
@@ -961,7 +698,7 @@ function simplifySearch(param) {
             }
             keepMappingKey.push({"name": tempName, "index": i, "sort": tempSort});
           }
-        } else if (tempObj instanceof CheckObj || tempObj instanceof OptionObj) {
+        } else if (tempObj instanceof ItemObj) {
           if (tempObj.text.toLowerCase().indexOf(tempWords.valueOf().toLowerCase()) !== -1) {
             if (tempObj.text.length == tempWords.valueOf().length) {
               tempSort = 1;
@@ -980,11 +717,11 @@ function simplifySearch(param) {
       return a.sort - b.sort;
     });
     if (keepMappingKey.length === 0) {
-      _removeMenuBox();
-      _createMessageBox(tempWords, rangeArr);
+      menuObj.removeMenuNodeFn();
+      menuObj.createMsgMenuFn(tempWords, rangeArr);
       return -1;
     } else {
-      _createMenuBox(tempWords, keepMappingKey, rangeArr);
+      menuObj.createSelectMenuFn(tempWords, rangeArr, keepMappingKey);
       return true;
     }
   }
@@ -1000,17 +737,14 @@ function simplifySearch(param) {
     }
     for (var i = 0; i < autoCompleteList.length; i++) {
       autoCompleteList[i].sort = tempText.length;
-      if (i > 0) {
-        tempText = tempText + " ";
-      }
-      tempText = tempText + autoCompleteList[i].getTextFn();
+      tempText = tempText + autoCompleteList[i].getTextFn() + " ";
       if (autoItemIndex === i && addSpaceFlag) {
         tempText = tempText + " ";
       }
     }
     return tempText;
   }
-  /**ƒ
+  /**
    * 設定 auto complete 整個句子外，還可指定游標位置
    * @param  int autoItemIndex 片語的編號 (注意有可能為 -1)
    * @param  boolean addSpaceFlag  在片語編號後方加入一個空白且游標在空白後
@@ -1052,9 +786,11 @@ function simplifySearch(param) {
       } else {
         _setAutoCompleteWord();
       }
-      _removeMenuBox();
+      menuObj.removeMenuNodeFn('select');
+    
     }
-    _removeMessageBox();
+    menuObj.removeMenuNodeFn('msg');
+  
   }
 
   function _resetForm() {
@@ -1162,7 +898,7 @@ function simplifySearch(param) {
           this.noShowInMenuFlag = true;
         }
       }   
-    } else if (itemObj instanceof CheckObj) {
+    } else if (itemObj instanceof ItemObj) {
       if (itemObj.usedFlag) {
         this.defaultArr.push(itemObj.node);
         if (!this.multiple) {
@@ -1171,16 +907,52 @@ function simplifySearch(param) {
       }
     } 
   };
+  SSJNodeItemObj.prototype.checkNoShowFlagFn = function(actionType) {
+    if (this.multiple) {
+      this.noShowInMenuFlag = false;
+      return;
+    }
+    if (actionType === true) {
+      this.noShowInMenuFlag = true;
+      return;
+    }
+    if (actionType === false) {
+      this.noShowInMenuFlag = false;
+      return;
+    }
+    var i = 0;
+    var tempItemObj;
+    while (tempItemObj = this.itemObjs[i++]) {
+      if (tempItemObj.usedFlag === true) {
+        this.noShowInMenuFlag = true;
+        return;
+      }
+    }
+    this.noShowInMenuFlag = false;
+  };
 
-  function autoCompleteItemObj(inText) {
+  function autoCompleteItemObj(inText, inObj) {
     var text = inText;
-    var custemObj; //TextObj,OptionObj,CheckObj...
+    var custemObj = inObj; //extend ItemObj
     this.sort = 0;
     
     this.setObjFn = function(inObj) {
+      var oldCustemObj = undefined;
+      if (!(inObj instanceof ItemObj)) {
+        _warning('setObjFn: argument is not ItemObj');
+        return ;
+      }
+      if (custemObj !== undefined) {
+        oldCustemObj = custemObj;
+        oldCustemObj.cancelFn();
+      }
       text = inObj.text;
       custemObj = inObj;
       custemObj.activeFn();
+      nodeDataList[custemObj.name].checkNoShowFlagFn(true);
+      if (oldCustemObj !== undefined && custemObj.name !== oldCustemObj.name) {
+        nodeDataList[oldCustemObj.name].checkNoShowFlagFn(false);
+      }
     };
     this.getObjFn = function() {
       return custemObj;
@@ -1196,21 +968,35 @@ function simplifySearch(param) {
         return;
       }
       custemObj.cancelFn();
+      nodeDataList[custemObj.name].checkNoShowFlagFn(false);
       custemObj = undefined;
     };
   }
 
+  //ItemObj class
+  function ItemObj(DomNode){
+    this.node = DomNode;
+    this.name = (DomNode.name !== undefined)? DomNode.name.replace(/\[.*\]/g, ""): undefined; //消除[]
+    this.multiple = (this.name !== DomNode.name)? true : false;
+    this.usedFlag = false;
+    this.text;
+    this.value = DomNode.value;
+  }
+  ItemObj.prototype.activeFn = function () {
+    this.usedFlag = true;
+  };
+  ItemObj.prototype.cancelFn = function() {
+    this.usedFlag = false;
+  };
 
   //TextObj class
   function TextObj(inputDomNode) {
+    ItemObj.call(this, inputDomNode);
     var regexpIndex = inputDomNode.getAttribute('data-regexp-flag');
-    // var multipleFlag = inputDomNode.getAttribute('data-ssj-multiple');
-    //TODO 增加判斷 maxlength 屬性
-    this.node = inputDomNode;
-    this.regexp = undefined; 
-    this.name = inputDomNode.name.replace(/\[.*\]/g, ""); //消除[]
-    this.multiple = (this.name !== inputDomNode.name)? true : false;
     
+    //TODO 增加判斷 maxlength 屬性
+    this.regexp = undefined; 
+
     //inputDomNode.getAttribute('data-regexp')
     if (regexpIndex !== null) {
       if (configRegExpList[regexpIndex] !== undefined && configRegExpList[regexpIndex].node === inputDomNode) {
@@ -1238,13 +1024,16 @@ function simplifySearch(param) {
     }
     this.usedFlag = (this.node.value !== "")? true: false;
   }
-  
+  TextObj.prototype = Object.create(ItemObj.prototype); // Set prototype to ItemObj
+  TextObj.prototype.constructor = TextObj; // Set constructor back to TextObj
   //TextObj class prototype
   TextObj.prototype.activeFn = function () {
+    ItemObj.prototype.activeFn.call(this);
     this.node.value = this.text;
 
   };
   TextObj.prototype.cancelFn = function () {
+    ItemObj.prototype.cancelFn.call(this);
     this.node.value = "";
     this.text = "";
   };
@@ -1258,48 +1047,477 @@ function simplifySearch(param) {
 
   //OptionObj class
   function OptionObj(index, inName, inMultiple, optionDomNode) {
-    this.node = optionDomNode;
+    ItemObj.call(this, optionDomNode);
     this.name = inName; //消除[]
     this.selectedIndex = index;
     this.usedFlag = (optionDomNode.selected == true)? true: false;
-    this.value =  optionDomNode.value;
     this.text = optionDomNode.text;
     this.multiple = inMultiple;
   }
+  OptionObj.prototype = Object.create(ItemObj.prototype); // Set prototype to ItemObj
+  OptionObj.prototype.constructor = OptionObj; // Set constructor back to OptionObj
   //OptionObj class prototype
   OptionObj.prototype.activeFn = function () {
+    ItemObj.prototype.activeFn.call(this);
     this.node.selected = true;
-
-    //this.node.selectedIndex = this.selectedIndex;
   };
   OptionObj.prototype.cancelFn = function () {
-    // this.node.selectedIndex = 0;
+    ItemObj.prototype.cancelFn.call(this);
     this.node.selected = false;
   };
   
 
   //CheckObj class
   function CheckObj(checkboxNode) {
-    this.node = checkboxNode;
-    this.value =  checkboxNode.value;
-    this.name = checkboxNode.name.replace(/\[.*\]/g, ""); //消除[]
+    ItemObj.call(this, checkboxNode);
     this.usedFlag = (checkboxNode.checked == true)? true: false;
     this.text = _analysisMappingLabel(checkboxNode, formNode);
     if (this.text == "") {
       this.text = this.value;
     }
-    this.multiple = (this.name !== checkboxNode.name)? true : false;
-
   }
+  CheckObj.prototype = Object.create(ItemObj.prototype); // Set prototype to ItemObj
+  CheckObj.prototype.constructor = CheckObj; // Set constructor back to CheckObj
   //CheckObj class prototype
   CheckObj.prototype.activeFn = function() {
+    ItemObj.prototype.activeFn.call(this);
     this.node.checked = true;
   };
   CheckObj.prototype.cancelFn = function() {
+    ItemObj.prototype.cancelFn.call(this);
     this.node.checked = false;
   };
+  
+  //BaseMenu class
+  function BaseMenu(){
+    var menuNode = null;
+    var type = '';
 
+    this.height = autoNode.offsetHeight || autoNode.clientHeight; 
+    this.width = autoNode.offsetWidth || autoNode.clientWidth;
+    this.top = autoNode.offsetTop || autoNode.clientTop; 
+    this.left = autoNode.offsetLeft || autoNode.clientLeft;
+    this.tagClass = config.tagClass;
 
+    
+    this.id = "ssj-menu-" + uiRandomNo; 
+    this.class = config.menuClass;
+    this.hideTag = config.hideTag;
+    this.firstItemHideFlag = true; 
+
+    this.setTypeFn = function(inType){
+      type = inType;
+    }
+    this.getTypeFn = function(){
+      return type;
+    }
+    this.setMenuNodeFn = function(inMenuNode){
+      if (menuNode !== null) {
+        this.removeMenuNodeFn();
+      }
+      menuNode = inMenuNode;
+      autoNode.parentNode.appendChild(inMenuNode);
+    }
+    this.getMenuNodeFn = function(){
+      return menuNode;
+    }
+    this.removeMenuNodeFn = function(inType){
+      if (inType !== undefined && type != inType) {
+        return;
+      }
+      if (menuNode !== null) {
+        menuNode.remove();
+        menuNode = null;
+        type = '';
+      }
+    }
+  }
+  
+  BaseMenu.prototype.createBaseMenuFn = function(defaultWord, autoItemIndexArr, keepMappingKey, clickEvent) {  
+    if (this.getMenuNodeFn() !== null) {
+      return;
+    }
+    var tempMenuNode = document.createElement("ul");
+    var optionNode;
+    var spanNode;
+    var i;
+    var tempMappingObj;
+    var tempTitle;
+    var tempName;
+    var tempIndex;
+    var tempObj;
+    var optionText;
+    tempMenuNode.id = this.id; 
+    tempMenuNode.className = this.class;
+    tempMenuNode.setAttribute('data-select', 0);
+    tempMenuNode.setAttribute('data-auto-no', autoItemIndexArr.join(","));
+    tempMenuNode.style.position = "absolute";//absolute
+    tempMenuNode.style.zIndex = 99;
+    tempMenuNode.style.top = (this.top + this.height) + 'px';
+    tempMenuNode.style.left = this.left + 'px';
+    tempMenuNode.style.minWidth = this.width + 'px';
+
+    optionNode = document.createElement("li");
+    if (typeof defaultWord === "object" ) {
+      tempName = defaultWord.name;
+      tempIndex = defaultWord.index;
+      tempObj = nodeDataList[tempName].itemObjs[tempIndex];
+      optionText = tempObj.text;
+      optionNode.setAttribute('data-name', tempName);
+      optionNode.setAttribute('data-index', tempIndex);
+      optionNode.appendChild(document.createTextNode(optionText));
+      if (this.hideTag === false) {
+        tempTitle = nodeDataList[tempName].title;
+        if (tempTitle !== '' && tempTitle !== undefined) {
+          spanNode = document.createElement("span");
+          spanNode.className = this.tagClass;
+          spanNode.appendChild(document.createTextNode(tempTitle));
+          optionNode.appendChild(spanNode);
+        }
+      }
+    } else {
+      optionNode.setAttribute('data-name', '');
+      optionNode.setAttribute('data-index', '');
+      optionNode.appendChild(document.createTextNode(defaultWord));
+    }
+    if (this.firstItemHideFlag) {
+      optionNode.style.display = "none";
+    }
+    optionNode.className = "focus";
+    _addEventListener(optionNode, 'click', clickEvent);
+    tempMenuNode.appendChild(optionNode);
+
+    i = 0;
+    while (tempMappingObj = keepMappingKey[i++]) {
+      tempName = tempMappingObj.name;
+      tempIndex = tempMappingObj.index;
+      tempObj = nodeDataList[tempName].itemObjs[tempIndex];
+      optionNode = document.createElement("li");
+      optionNode.setAttribute('data-name', tempName);
+      optionNode.setAttribute('data-index', tempIndex);
+      if (tempObj instanceof TextObj) {
+        optionText = defaultWord;
+      } else {
+
+        optionText = tempObj.text;
+      }
+      optionNode.appendChild(document.createTextNode(optionText));
+      if (this.hideTag === false) {
+        tempTitle = nodeDataList[tempName].title;
+        if (tempTitle !== '' && tempTitle !== undefined) {
+          spanNode = document.createElement("span");
+          spanNode.className = this.tagClass;
+          // spanNode.style.float = "right";
+          spanNode.appendChild(document.createTextNode(tempTitle));
+          optionNode.appendChild(spanNode);
+        }
+      }
+      _addEventListener(optionNode, 'click', clickEvent);
+      // optionNode.addEventListener('click', _clickMenuItem);
+      tempMenuNode.appendChild(optionNode);
+    }
+    this.setMenuNodeFn(tempMenuNode);
+  };
+
+  BaseMenu.prototype.createSelectMenuFn = function(defaultWord, autoItemIndexArr, keepMappingKey) {  
+    this.setTypeFn('select');
+    this.id = "ssj-menu-" + uiRandomNo; 
+    this.class = config.menuClass;
+    this.hideTag = config.hideTag;
+    this.firstItemHideFlag = true;
+
+    this.createBaseMenuFn(defaultWord, autoItemIndexArr, keepMappingKey, this.clickSelectItemEvent);
+  };
+
+  BaseMenu.prototype.createMsgMenuFn = function(defaultWord, autoItemIndexArr) {
+    this.setTypeFn('msg');
+    this.id = "ssj-msg-" + uiRandomNo; 
+    this.class = config.msgClass;   
+    this.hideTag = true;
+    this.firstItemHideFlag = false;
+
+    this.createBaseMenuFn(defaultWord, autoItemIndexArr, [], this.clickMsgItemEvent);
+  };
+
+  BaseMenu.prototype.focusMenuItemFn = function() {
+    var menuNode = this.getMenuNodeFn();
+    if (menuNode === null) {
+      return false;
+    }
+    var focusNode = menuNode.children[+(menuNode.getAttribute('data-select'))];
+    if (focusNode.offsetTop < this.scrollTop) {
+      var tempScroll = focusNode.offsetTop + focusNode.offsetHeight - this.offsetHeight;
+      this.scrollTop = (tempScroll < 0)? 0 : tempScroll;
+      return;
+    } else if (focusNode.offsetTop + focusNode.offsetHeight > this.scrollTop + this.offsetHeight) {
+      this.scrollTop = focusNode.offsetTop;
+      return;
+    }
+  };
+
+  BaseMenu.prototype.createChangeMenuFn = function(defaultObj, autoItemIndexArr, keepMappingKey) {
+    this.setTypeFn('change');
+    this.id = "ssj-change-" + uiRandomNo; 
+    this.class = config.menuClass;
+    this.hideTag = config.hideTag;
+    this.firstItemHideFlag = false;
+
+    this.createBaseMenuFn(defaultObj, autoItemIndexArr, keepMappingKey, this.clickChangeItemEvent);
+  };
+  
+  BaseMenu.prototype.clickSelectItemEvent = function(e) {
+    var tempEvent = _eventCompatible(e);
+    var tempNode = tempEvent.target;
+    var tempMenuNode;
+    var index;
+    var autoItemIndex;
+    var tempIndexArr
+    var tempAutoObj;
+    var tempName;
+    var tempIndex;
+    var tempObj;
+    if (tempNode.tagName != "LI") {
+      if (tempNode.className == config.tagClass && tempNode.parentNode.tagName == "LI") {
+        tempNode = tempNode.parentNode;
+      } else {
+        return;
+      }
+    }
+    tempMenuNode = tempNode.parentNode;
+    index = _arrayIndexOf(tempMenuNode.children, tempNode);
+    if (index == -1 || index == 0) {
+      return;
+    } else {
+      tempMenuNode.setAttribute('data-select', index);
+      tempNode.className = "focus";
+    }
+    autoItemIndex = tempMenuNode.getAttribute('data-auto-no');
+    tempIndexArr = autoItemIndex.split(",");
+    tempAutoObj = autoCompleteList[tempIndexArr[0]];
+    tempName = tempMenuNode.children[index].getAttribute('data-name');
+    tempIndex = +(tempMenuNode.children[index].getAttribute('data-index'));
+    tempObj = nodeDataList[tempName].itemObjs[tempIndex];
+
+    if (tempObj instanceof TextObj) {
+      tempObj.setTextFn(tempMenuNode.children[0].textContent);
+    }
+    tempAutoObj.setObjFn(tempObj); //tempObj.usedFlag = true;
+    if (tempIndexArr.length > 1) { 
+      autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
+    }
+    _setAutoCompleteWord(tempIndexArr[0]);
+    menuObj.removeMenuNodeFn();
+  
+    autoNode.focus();
+    _checkAutoComplete(tempIndexArr[0]-1);
+    tempEvent.preventDefault(); //停止冒泡事件
+  };
+
+  BaseMenu.prototype.clickChangeItemEvent = function(e) {
+    var tempEvent = _eventCompatible(e);
+    var tempNode = tempEvent.target;
+    var tempMenuNode;
+    var index;
+    var autoItemIndex;
+    var tempIndexArr
+    var tempAutoObj;
+    var tempName;
+    var tempIndex;
+    var tempObj;
+    if (tempNode.tagName != "LI") {
+      if (tempNode.className == config.tagClass && tempNode.parentNode.tagName == "LI") {
+        tempNode = tempNode.parentNode;
+      } else {
+        return;
+      }
+    }
+    tempMenuNode = tempNode.parentNode;
+    index = _arrayIndexOf(tempMenuNode.children, tempNode);
+    if (index === -1) {
+      return;
+    } else if (index === 0) {
+
+    } else {
+      tempMenuNode.setAttribute('data-select', index);
+      tempNode.className = "focus";
+      autoItemIndex = tempMenuNode.getAttribute('data-auto-no');
+      tempIndexArr = autoItemIndex.split(",");
+      tempAutoObj = autoCompleteList[tempIndexArr[0]];
+      tempName = tempMenuNode.children[index].getAttribute('data-name');
+      tempIndex = +(tempMenuNode.children[index].getAttribute('data-index'));
+      tempObj = nodeDataList[tempName].itemObjs[tempIndex];
+      tempAutoObj.setObjFn(tempObj); //tempObj.usedFlag = true;
+
+      if (tempIndexArr.length > 1) {
+        autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
+      }
+      _setAutoCompleteWord(tempIndexArr[0]);
+    }
+    menuObj.removeMenuNodeFn();
+  
+    autoNode.focus();
+    _checkAutoComplete();
+    tempEvent.preventDefault(); //停止冒泡事件
+  };
+
+  BaseMenu.prototype.clickMsgItemEvent = function(e) {
+    var tempEvent = _eventCompatible(e);
+    var tempNode = tempEvent.target;
+    var tempMenuNode = tempNode.parentNode;
+    var autoItemIndex = tempMenuNode.getAttribute('data-auto-no');
+    var tempIndexArr = autoItemIndex.split(",");
+    autoNode.focus();
+    _removeInvalidWord(e, tempIndexArr[0] - 1);
+    tempEvent.preventDefault(); //停止冒泡事件
+  };
+
+  BaseMenu.prototype.controlBaseEvent = function(e) {
+    var tempEvent = _eventCompatible(e);
+    var menuNode = menuObj.getMenuNodeFn();
+    if (menuNode === null) {
+      return;
+    }
+    if (menuObj.getTypeFn() === 'msg') {
+      menuObj.controlMsgEvent(e);
+      return true;
+    }
+    var tempFocusItem = +(menuNode.getAttribute('data-select'));
+
+    if (tempFocusItem === null) {
+      tempFocusItem = 0;
+    }
+    switch (e.keyCode) {
+      case constKeyCode.ESC: 
+        menuObj.removeMenuNodeFn();  
+        break;
+      case constKeyCode.UP: 
+        menuNode.children[tempFocusItem].className = "";
+        tempFocusItem--;
+        if (tempFocusItem < 0) {
+          tempFocusItem = menuNode.childElementCount-1;
+        }
+        menuNode.children[tempFocusItem].className = "focus";
+        menuNode.setAttribute('data-select', tempFocusItem);
+        menuObj.focusMenuItemFn();
+        break;
+      case constKeyCode.DOWN:
+        menuNode.children[tempFocusItem].className = "";
+        tempFocusItem++;
+        if (tempFocusItem > menuNode.childElementCount-1) {
+          tempFocusItem = 0;
+        }
+        menuNode.children[tempFocusItem].className = "focus";
+        menuNode.setAttribute('data-select', tempFocusItem);
+        menuObj.focusMenuItemFn();
+        break;
+      case constKeyCode.TAB:
+        if (menuObj.getTypeFn() === 'select') {
+          if (tempFocusItem === 0) {
+            tempFocusItem = 1;
+            menuNode.children[tempFocusItem].className = "focus";
+            menuNode.setAttribute('data-select', tempFocusItem);
+          }
+        }
+        //break; //故意觸發 ENTER 動作
+      case constKeyCode.ENTER: //enter
+        if (menuObj.getTypeFn() === 'select') {
+          menuObj.controlSelectEnterFn();
+        } else if (menuObj.getTypeFn() === 'change') {
+          menuObj.controlChangeEnterFn();
+        } else {
+          _warning('unknow BaseMenu.type');
+        }
+        tempEvent.preventDefault(); //停止冒泡事件
+        break;
+    }
+  };
+
+  BaseMenu.prototype.controlSelectEnterFn = function() {
+    var menuNode = menuObj.getMenuNodeFn();
+    var tempFocusItem = +(menuNode.getAttribute('data-select'));
+    var autoItemIndex;
+    var tempIndexArr;
+    var tempAutoObj;
+    var tempName;
+    var tempIndex;
+    var tempObj;
+    if (tempFocusItem === null) {
+      tempFocusItem = 0;
+    }
+    
+    autoItemIndex = menuNode.getAttribute('data-auto-no');
+    tempIndexArr = autoItemIndex.split(",");
+    tempAutoObj = autoCompleteList[tempIndexArr[0]];
+    if (menuNode.childElementCount == 2) { //若只有一個選項，按下ENTER等同按下TAB
+      tempFocusItem = 1;
+    }
+    if (tempFocusItem === 0) {
+      _setAutoCompleteWord(tempIndexArr[tempIndexArr.length - 1]);
+    } else {
+      tempName = menuNode.children[tempFocusItem].getAttribute('data-name');
+      tempIndex = menuNode.children[tempFocusItem].getAttribute('data-index');
+      tempObj = nodeDataList[tempName].itemObjs[tempIndex];
+
+      if (tempObj instanceof TextObj) {
+        tempObj.setTextFn(menuNode.children[0].textContent);
+      }
+      tempAutoObj.setObjFn(tempObj); //tempObj.usedFlag = true;
+
+      if (tempIndexArr.length > 1) {
+        autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
+      }
+      _setAutoCompleteWord(tempIndexArr[0]);
+    }
+    menuObj.removeMenuNodeFn();
+    _checkAutoComplete(tempIndexArr[0]-1);
+  };
+
+  BaseMenu.prototype.controlChangeEnterFn = function() {
+    var menuNode = menuObj.getMenuNodeFn();
+    var tempFocusItem = +(menuNode.getAttribute('data-select'));
+    var autoItemIndex;
+    var tempIndexArr;
+    var tempAutoObj;
+    var tempName;
+    var tempIndex;
+    var tempObj;
+    if (tempFocusItem === null) {
+      tempFocusItem = 0;
+    }
+    if (tempFocusItem == 0) {
+      menuObj.removeMenuNodeFn();
+    } else {
+      autoItemIndex = menuNode.getAttribute('data-auto-no');
+      tempIndexArr = autoItemIndex.split(",");
+      tempAutoObj = autoCompleteList[tempIndexArr[0]];
+      tempName = menuNode.children[tempFocusItem].getAttribute('data-name');
+      tempIndex = +(menuNode.children[tempFocusItem].getAttribute('data-index'));
+      tempObj = nodeDataList[tempName].itemObjs[tempIndex];
+      tempAutoObj.setObjFn(tempObj); //tempObj.usedFlag = true;
+
+      if (tempIndexArr.length > 1) {
+        autoCompleteList.splice(tempIndexArr[1], tempIndexArr.length - 1);
+      }
+      _setAutoCompleteWord(tempIndexArr[0]);
+    }
+    menuObj.removeMenuNodeFn();
+    _checkAutoComplete();
+  };
+
+  BaseMenu.prototype.controlMsgEvent = function(e) {
+    var tempEvent = _eventCompatible(e);
+    if(e.keyCode === constKeyCode.ESC
+      || e.keyCode === constKeyCode.TAB
+      || e.keyCode === constKeyCode.ENTER
+      ) {
+      var autoItemIndex = menuObj.getMenuNodeFn().getAttribute('data-auto-no');
+      var tempIndexArr = autoItemIndex.split(",");
+
+      _removeInvalidWord(e, tempIndexArr[0] - 1);
+      tempEvent.preventDefault(); //停止冒泡事件
+    } 
+  };
+  
   //common plugin --------------------------------
 
   function _warning(inText) {
@@ -1426,5 +1644,3 @@ function simplifySearch(param) {
   }
   return returnParam;
 }
-
-
