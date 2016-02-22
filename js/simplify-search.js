@@ -44,9 +44,32 @@ function simplifySearch(param) {
     "DELETE": 46,
     "TAB": 9,
   };
+  //若實作 test() 就可以取代代 RegExp 
   var constRegexp = {
     "ANY": /^.+$/,
     "NUMBER": /^\d+$/,
+    "EMAIL": /^[^ @]+@[^ @%]+$/,
+    "DATE": {"test": function(text) {
+        if(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text) === false) {
+          return false;
+        }
+        var temp = new Date(text);
+        return !isNaN(temp.valueOf());
+      }},
+    "TIME": {"test": function(text) {
+        if(/^[0-9]{2}:[0-9]{2}$/.test(text) === false) {
+          return false;
+        }
+        var tempArr = text.split(":");
+        if (+(tempArr[0]) < 0 || +(tempArr[0]) >= 24) {
+          return false;
+        }
+        if (+(tempArr[1]) < 0 || +(tempArr[1]) > 60) {
+          return false;
+        }
+        return true;
+      }},
+    "URL":/^\w+:\/\/.*$/,
   };
   var saveInputType = ["text","radio","checkbox","url","email","tel","date","number"];
   var constTagType = {
@@ -56,8 +79,8 @@ function simplifySearch(param) {
     "INPUT_CHECKBOX": 3,
     "INPUT_URL": 4,
     "INPUT_EMAIL": 5,
-    "INPUT_TEL": 6,
     "INPUT_DATE": 7,
+    "INPUT_TIME": 13,
     "INPUT_NUMBER": 8,
     "TEXTAREA": 9,
     "SELECT_ONE": 10, 
@@ -67,7 +90,9 @@ function simplifySearch(param) {
   //return 回傳的變數
   var returnParam = {
     "init": init,
-    "addData": addDomDataMapping, 
+    "save": save,
+    "reset": reset,
+    // "addData": addDomDataMapping, 
     "addRegexpByDom": addRegexpByDom,
     "addRegexpById": addRegexpById,
     "addIgnoreByDom": addIgnoreByDom,
@@ -98,14 +123,15 @@ function simplifySearch(param) {
     _addEventListener(autoNode, "keyup", _checkWordChange); //輸入法異動只會觸發up事件
     _addEventListener(document, "click",_checkIfBlurAutoComplete);
     _addEventListener(autoNode, "click", _clickInputEventAction);
-
-
     return returnParam;
   }
-  //TODO
-  function addDomDataMapping(inNode, valueToTextJson) {
-    return returnParam;
+  function save(e) {
+    _saveForm();
   }
+  function reset(e) {
+    _resetForm();
+  }
+
   function addRegexpById(id, inRegexp) {
     var tempNode = document.getElementById(id);
     if (tempNode === undefined || tempNode === null) {
@@ -119,8 +145,9 @@ function simplifySearch(param) {
       throw "param not HTML DOM Nodes";
       return returnParam;
     }
-    if (!(inRegexp instanceof RegExp)) {
-      throw "param not RegExp object";
+    if (inRegexp === undefined)
+    if (!inRegexp || typeof inRegexp.test !== "function") {
+      throw "Param does not have test(), pleast use RegExp object or create function test()";
       return returnParam;
     }
     _addRegexpDom(inNode, inRegexp);
@@ -210,10 +237,12 @@ function simplifySearch(param) {
     }
     return tempTitle;
   }
-  function _analysisNodeData(e, firstFlag) {
+  function _analysisNodeData(e, firstFlag, keepDefaultFlag) {
     var i;
     var tempNode;
     var tempTagType;
+    var oldNodeDataList = nodeDataList;
+    var tempName;
     autoCompleteList = [];
     nodeDataList = {};
     //分析表單內的資料
@@ -236,35 +265,87 @@ function simplifySearch(param) {
       switch (tempTagType) {
         case constTagType.INPUT_NUMBER:
         case constTagType.INPUT_DATE:
+        case constTagType.INPUT_TIME:
+          _addNodeDataList(new TextObj(tempNode));
+          if (firstFlag) {
+            _addEventListener(tempNode,'change',_analysisNodeData);
+          }
+          break;
         case constTagType.INPUT_EMAIL:
-        case constTagType.INPUT_TEL:
         case constTagType.INPUT_URL:
         case constTagType.TEXTAREA:
         case constTagType.INPUT_TEXT:
           _addNodeDataList(new TextObj(tempNode));
           if (firstFlag) {
-            _addEventListener(tempNode,'keyup',_analysisNodeData);
+            _addEventListener(tempNode,'blur',_changeNodeValueEvent);
           }
           break;
         case constTagType.INPUT_RADIO:
         case constTagType.INPUT_CHECKBOX:
           _addNodeDataList(new CheckObj(tempNode));
           if (firstFlag) {
-            _addEventListener(tempNode,'change',_analysisNodeData);
+            _addEventListener(tempNode,'change',_changeNodeValueEvent);
           }
           break;
         case constTagType.SELECT_ONE:
         case constTagType.SELECT_MULTIPLE:
           _analysisSelect(tempNode);
           if (firstFlag) {
-            _addEventListener(tempNode,'change',_analysisNodeData);
+            _addEventListener(tempNode,'change',_changeNodeValueEvent);
           }
           break;
       }
     }
+    if (keepDefaultFlag) {
+      for (tempName in nodeDataList) {
+        nodeDataList[tempName].defaultArr = oldNodeDataList[tempName].defaultArr;
+      }
+    }
     _setAutoCompleteWord();
   }
-
+  function _changeNodeValueEvent(e) {
+    var tempEvent = _eventCompatible(e);
+    var tempNode = tempEvent.target;
+    var tempName;
+    var i;
+    var tempObj;
+    var tempTagType;
+    var searchFlag = false;
+    var tempFnName;
+    if (tempNode === undefined || tempNode === null || tempNode.name === undefined) {
+      _analysisNodeData(null, false, true);
+      return ;
+    }
+    tempTagType = _getCustomTagType(tempNode);
+    tempName = tempNode.name.replace(/\[.*\]/g, "");
+    
+    switch (tempTagType) {
+      case constTagType.INPUT_NUMBER:
+      case constTagType.INPUT_DATE:
+      case constTagType.INPUT_TIME:
+      case constTagType.INPUT_EMAIL:
+      case constTagType.INPUT_URL:
+      case constTagType.TEXTAREA:
+      case constTagType.INPUT_TEXT:
+        nodeDataList[tempName].changeItemObjFn(new TextObj(tempNode));
+        
+        break;
+      case constTagType.INPUT_RADIO:
+      case constTagType.INPUT_CHECKBOX:
+        nodeDataList[tempName].changeItemObjFn(new CheckObj(tempNode));
+        break;
+      case constTagType.SELECT_ONE:
+      case constTagType.SELECT_MULTIPLE:
+        _analysisSelect(tempNode, true);
+        break;
+      default:
+        _warning('TagType of node is unknow.');
+        return;
+    }
+    _resetAutoComleteWord();
+    return;
+    
+  }
   function _addNodeDataList(itemObj,parentNode) {
     var tempName = itemObj.name;
     if (nodeDataList[tempName] === undefined) {
@@ -295,13 +376,16 @@ function simplifySearch(param) {
       return tempName;
     }
   }
-  function _analysisSelect(domNode) {
+  function _analysisSelect(domNode, keepDefaultFlag) {
     var tempObj;
     var tempName = domNode.name.replace(/\[.*\]/g, "");
+    var oldNodeDataListObj;
     var tempMultiple = ((domNode.getAttribute('multiple') !== null)? true : false);
     if (domNode.length == 1) {
       return;
     }
+    oldNodeDataListObj = nodeDataList[tempName];
+    nodeDataList[tempName] = undefined;
     for (var i = 0; i < domNode.length; i++) {
       if (config.ignoreEmptyValue === true && domNode[i].value == '') {
         continue;
@@ -313,6 +397,9 @@ function simplifySearch(param) {
         tempObj = new OptionObj(i, tempName, tempMultiple, domNode[i]);
         _addNodeDataList(tempObj,domNode);
       }
+    }
+    if (keepDefaultFlag) {
+      nodeDataList[tempName].defaultArr = oldNodeDataListObj.defaultArr;
     }
   }
 
@@ -342,10 +429,10 @@ function simplifySearch(param) {
           return constTagType.INPUT_NUMBER;
         } else if (tempType == "date") {
           return constTagType.INPUT_DATE;
+        } else if (tempType == "time") {
+          return constTagType.INPUT_TIME;
         } else if (tempType == "email") {
           return constTagType.INPUT_EMAIL;
-        } else if (tempType == "tel") {
-          return constTagType.INPUT_TEL;
         } else if (tempType == "url") {
           return constTagType.INPUT_URL;
         }
@@ -398,28 +485,6 @@ function simplifySearch(param) {
       }
     }
 
-    // if (nodeDataList[tempName] !== undefined && nodeDataList[tempName].itemObjs !== undefined) {
-    //   if (domNode.tagName == "SELECT" && nodeDataList[tempName].parentNode === domNode) {
-    //     nodeDataList[tempName] = undefined;
-    //   } else {
-    //     i = -1;
-    //     while (tempObj = nodeDataList[tempName].itemObjs[++i]) {
-    //       if (tempObj.node === domNode) {
-    //         nodeDataList[tempName].itemObjs.splice(i,1);
-    //         //刪除預設值的設定
-    //         if (tempObj instanceof TextObj) {
-    //           nodeDataList[tempName].defaultArr.splice(i,1);
-    //         } else {
-    //           tempIndex = _arrayIndexOf(nodeDataList[tempName].defaultArr, domNode);
-    //           if (tempIndex !== -1) {
-    //             nodeDataList[tempName].defaultArr.splice(tempIndex,1);
-    //           }
-    //         }
-    //         break;
-    //       }
-    //     }
-    //   }
-    // }
     if (_arrayIndexOf(configIgnoreList, domNode)== -1) {
       domNode.setAttribute('data-ignore-flag', configIgnoreList.length);
       configIgnoreList.push(domNode);
@@ -560,8 +625,6 @@ function simplifySearch(param) {
         }
       }
       menuObj.removeMenuNodeFn();
-    
-    
       autoCompleteList = tempList;
       _checkAutoComplete();
     } else {
@@ -690,7 +753,7 @@ function simplifySearch(param) {
           continue;
         } 
         if (tempObj instanceof TextObj) {
-          if (tempObj.regexp.test(tempWords) === true) {
+          if (tempObj.checkRuleFn(tempWords) === true) {
             if (tempObj.regexp === constRegexp.ANY) {
               tempSort = 500;
             } else {
@@ -764,7 +827,27 @@ function simplifySearch(param) {
       _setKeyinPosition(autoNode, newPosition);
     }
   }
-
+  function _resetAutoComleteWord() {
+    var tempName;
+    var tempObj;
+    var i;
+    autoCompleteList = [];
+    for(tempName in nodeDataList) {
+      if (nodeDataList[tempName].multiple === false && nodeDataList[tempName].noShowInMenuFlag === false) {
+        continue;
+      }
+      i = 0;
+      while (tempObj = nodeDataList[tempName].itemObjs[i++]) {
+        if (tempObj.usedFlag === true) {
+          autoCompleteList.push(new autoCompleteItemObj(tempObj.text, tempObj));
+          if (nodeDataList[tempName].multiple === false) {
+            break;
+          }
+        }
+      }
+    }
+    _setAutoCompleteWord();
+  }
   function _removeInvalidWord(e, autoObjIndex) {
     var tempAutoObj;
     var newAutoComleteList = [];
@@ -792,12 +875,65 @@ function simplifySearch(param) {
     menuObj.removeMenuNodeFn('msg');
   
   }
-
+  function _saveForm() {
+    var tempName;
+    var tempObj;
+    var i;
+    var tempType;
+    for (tempName in nodeDataList) {
+      //將目前選定的值設為 defaultArr
+      nodeDataList[tempName].defaultArr = [];
+      if (nodeDataList[tempName].multiple === false && nodeDataList[tempName].noShowInMenuFlag === false) {
+         continue; //代表沒有設值，可以直接忽略輪巡
+      }
+      i = 0;
+      while (tempObj = nodeDataList[tempName].itemObjs[i++]) {
+        if (tempObj.usedFlag === true) {
+          if (tempObj instanceof TextObj) {
+            nodeDataList[tempName].defaultArr.push(tempObj.value);
+          } else {
+            nodeDataList[tempName].defaultArr.push(tempObj.node);
+          }
+        } 
+      }
+    }
+  }
   function _resetForm() {
     var tempName;
+    var tempObj;
+    var tempObjClass;
+    var tempDefaultValue;
+    var i;
+    var tempUesdFlag;
     for (tempName in nodeDataList) {
-      //TODO 使用defaultArr
+      i = -1;
+      tempUesdFlag = false;
+      while (tempObj = nodeDataList[tempName].itemObjs[++i]) { 
+        if (tempObj instanceof TextObj) {
+          tempDefaultValue = nodeDataList[tempName].defaultArr[i];
+          if (tempDefaultValue === undefined || tempDefaultValue === "") {
+            tempObj.cancelFn();
+          } else{
+            tempObj.setTextFn(tempDefaultValue);
+            tempObj.activeFn();
+            tempUesdFlag = true;
+          }    
+        } else if (tempObj instanceof CheckObj || tempObj instanceof OptionObj) {
+          if (_arrayIndexOf(nodeDataList[tempName].defaultArr, tempObj.node) !== -1) {
+            tempObj.activeFn();
+            tempUesdFlag = true;
+          } else {
+            tempObj.cancelFn();
+          }
+        }
+      }
+      if (tempUesdFlag === true && nodeDataList[tempName].multiple === false) {
+        nodeDataList[tempName].noShowInMenuFlag = true;
+      } else {
+        nodeDataList[tempName].noShowInMenuFlag = false;
+      }
     }
+    _resetAutoComleteWord();
   }
   function _setDefaultValue(itemObj) {
     var tempName = itemObj.name;
@@ -855,7 +991,7 @@ function simplifySearch(param) {
       }
       if (tempObj.node === domNode) {
         tempObj.setRegexpFn(regexp);
-        if (!regexp.test(this.defaultArr[i])) {
+        if (!tempObj.checkRuleFn(this.defaultArr[i])) {
           _warning("Text default value be cleared! because does not match for new RegExp.");
           this.defaultArr[i] = "";
         }
@@ -906,6 +1042,22 @@ function simplifySearch(param) {
         }
       }
     } 
+  };
+  SSJNodeItemObj.prototype.changeItemObjFn = function(inItemObj) {
+
+    var i;
+    var tempObj;
+    i = -1;
+    while (tempObj = this.itemObjs[++i]) {
+      if (tempObj.node === inItemObj.node) {
+        this.itemObjs[i] = inItemObj;
+        if (this.multiple === false && tempObj.usedFlag !== inItemObj.usedFlag) {
+          this.noShowInMenuFlag = inItemObj.usedFlag;
+        }
+        break;
+      }
+    }
+    //不檢查也不更換 autoCompleteList ，請自行呼叫 reset
   };
   SSJNodeItemObj.prototype.checkNoShowFlagFn = function(actionType) {
     if (this.multiple) {
@@ -993,10 +1145,15 @@ function simplifySearch(param) {
   function TextObj(inputDomNode) {
     ItemObj.call(this, inputDomNode);
     var regexpIndex = inputDomNode.getAttribute('data-regexp-flag');
-    
-    //TODO 增加判斷 maxlength 屬性
+    var tempTagType = _getCustomTagType(inputDomNode);
+    //增加判斷 maxlength 屬性
     this.regexp = undefined; 
-
+    this.maxlength = inputDomNode.getAttribute('maxlength');
+    this.min = inputDomNode.getAttribute('min'); //number or date
+    this.max = inputDomNode.getAttribute('max');
+    if (this.maxlength === null || this.maxlength < 0) {
+      this.maxlength = NaN;
+    }
     //inputDomNode.getAttribute('data-regexp')
     if (regexpIndex !== null) {
       if (configRegExpList[regexpIndex] !== undefined && configRegExpList[regexpIndex].node === inputDomNode) {
@@ -1012,13 +1169,38 @@ function simplifySearch(param) {
       }
     }
     if (this.regexp === undefined) {
-      this.regexp =  constRegexp.ANY;
+      switch (tempTagType) {
+        case constTagType.INPUT_NUMBER:
+          this.regexp = constRegexp.NUMBER;
+          if (this.min !== null) {
+            this.min = +(this.min);
+          }
+          if (this.max !== null) {
+            this.max = +(this.max);
+          }
+          break;
+        case constTagType.INPUT_URL:
+          this.regexp = constRegexp.URL;
+          break;
+        case constTagType.INPUT_EMAIL:
+          this.regexp = constRegexp.EMAIL;
+          break;
+        case constTagType.INPUT_DATE:
+          this.regexp = constRegexp.DATE;
+          break;
+        case constTagType.INPUT_TIME:
+          this.regexp = constRegexp.TIME;
+          break;
+        default:
+          this.regexp = constRegexp.ANY;
+          break;
+      }      
     }
     if (this.node.value !== "") {
-      if (this.regexp.test(this.node.value)) {
+      if (this.regexp.test(this.node.value) === true) {
         this.text = this.node.value;
       } else {
-        _warning("value of [name=" + inputDomNode.name + "]don't match regexp, so delete the value");
+        _warning("value of [name=" + inputDomNode.name + "] don't match regexp, so delete the value");
         this.node.value = "";
       }
     }
@@ -1042,6 +1224,24 @@ function simplifySearch(param) {
   };
   TextObj.prototype.setRegexpFn = function (regexp) {
     this.regexp = regexp;
+  }
+
+  TextObj.prototype.checkRuleFn = function (text) {
+    if (this.regexp.test(text) !== true) {
+      return false;
+    }
+    if (isNaN(this.maxlength) === false && text.length > this.maxlength) {
+      return false;
+    }
+
+    if (this.min !== null && text < this.min) {
+      return false;
+    }
+    if (this.max !== null && text > this.max) {
+
+      return false;
+    }
+    return true;
   }
 
 

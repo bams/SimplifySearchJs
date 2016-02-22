@@ -93,7 +93,7 @@
 <body>
   <form action="" id='test'>
   <label for="keyword">關鍵字</label>
-  <input type="text" name="keyword" id="keyword" value="">
+  <input type="text" name="keyword" id="keyword" value="" maxlength="5">
   <br>
 
   <label for="quesID">單號</label>
@@ -151,7 +151,6 @@
   </select>
 
   <br>
-
   業務
   <select name="userId">
   <option value="">- 全部 -</option>
@@ -169,22 +168,49 @@
 
   <br>
   	單選測試：<label><input type="radio" name="sex" value='1'> 男</label>
-  	<label><input type="radio" name="sex" value='2'> 女</label><br>
+  	<label><input type="radio" name="sex" value='2'> 女</label>
+  <br>
     多選測試：<label><input type="checkbox" name="time[]" id='time' value='1' checked> 早安</label>
     <label><input type="checkbox" name="time[]" value='2' checked> 中</label>
-    <label><input type="checkbox" name="time[]" value='3'> 晚</label><br>
+    <label><input type="checkbox" name="time[]" value='3'> 晚</label>
+  <br>
     重複值測試：<label><input type="radio" name="sex2" value='1'> 男</label>
-    <label><input type="radio" name="sex2" value='2'> 女</label><br>
-    <label for='readonly1'>readonly 測試</label>：<input type="text" name="readonly1" value="不可修改的值" readonly><br>
+    <label><input type="radio" name="sex2" value='2'> 女</label>
+  <br>
+    <label for='readonly1'>readonly 測試</label>：<input type="text" name="readonly1" value="不可修改的值" readonly>
+  <br>
     disabled 測試：<label><input type="checkbox" name="disabled[]" value='1'> 北區</label>
     <label><input type="checkbox" name="disabled[]" value='2' disabled> 中區</label>
-    <label><input type="checkbox" name="disabled[]" value='3'> 南區</label><br>
+    <label><input type="checkbox" name="disabled[]" value='3'> 南區</label>
+  <br>
+    <label for="email">email</label>
+    <input type="email" name="email" id="email" value="">
+    
+  <br>
+    <label for="url">url</label>
+    <input type="url" name="url" id="url" value="">
+    
+  <br>
+    <label for="number">number</label>
+    <input type="number" name="number" id="number" value="" min="1" max="6">
+    
+  <br>
+    <label for="time2">time2</label>
+    <input type="time" name="time2" id="time2">
+    
+  <br>
+    <label for="date">date</label>
+    <input type="date" name="date" id="date" value="" min="2016-02-18">
+    
+  <br>
     <input type="submit" value='送出'>
 
   </form>
 
   <hr>
   autoComplete:<input type='text' data-test id='autoObj' autocomplete="off">
+  <input type='button' id='btn1' value='save'>
+   <input type='button' id='btn2' value='reset'>
   <script src="../js/simplify-search.js"></script>
   <script>
     var testJsObj = simplifySearch({
@@ -201,6 +227,12 @@
     .setTitleByName('time',"時段")
     .init();
 
+    document.getElementById('btn1').onclick = function(){
+      testJsObj.save();
+    };
+    document.getElementById('btn2').onclick = function(){
+      testJsObj.reset();
+    };
     console.log(testJsObj.log());
   </script>
 </body>
