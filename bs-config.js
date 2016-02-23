@@ -19,8 +19,8 @@ module.exports = {
             "port": 8080
         }
     },
-    "index": "test/index.html",
-    "files": "js/*.js, test/*.html",
+    "index": "example/index.html",
+    "files": "js/*.js, css/*.css, example/*.html",
     "watchOptions": {},
     "server": true,
     "proxy": false,

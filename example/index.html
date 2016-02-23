@@ -1,93 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-<!-- <link href="https://code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css" rel="stylesheet" type="text/css" />
-<script src="https://code.jquery.com/jquery-1.11.3.js"></script>
-<script src="https://code.jquery.com/ui/1.11.4/jquery-ui.js"></script> -->
-<style>
-.autoComplete {
-  width: 90%;
-  padding: 4px;
-  font-size: 12pt;
-  margin: 8px;
-}
-.ssj-menu {
-  list-style: none;
-  border: 1px #000 solid;
-  margin: 0;
-  padding: 0;
-  cursor: pointer;
-  max-height: 12em;
-  overflow: auto;
-  line-height: 1.5em;
-  background: #fff;
-}
-.ssj-menu .focus {
-  background: #999;
-}
-.ssj-menu :hover {
-  background: #f99;
-}
-.ssj-menu li {
-  overflow: auto;
-  zoom: 1;
-  clear: both;
-  padding: 2px;
-  border-bottom: 1px solid #ddd;
-}
-.ssj-msg {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  color: #f00;
-  background: #fff;
-  text-decoration: line-through;
-
-}
-.ssj-msg::before {
-  content: "";
-  display: block;
-  position: absolute;
-  top: -2px;
-  border-top: solid 2px #f00;
-  width: 98%;
-}
-.ssj-tag {
-  position: relative;
-  padding: 0 0.5em;
-  background: #ddd;
-}
-.ssj-tag:hover {
-  background: #ddd;
-}
-.ssj-tag::before {
-  content: "";
-  display: block;
-  position: absolute;
-  top: 0;
-  left: -0.45em;
-  height: 0;
-  border: 0.5em solid transparent; 
-  border-left-width: 0;
-  border-right-color: #ddd;
-}
-.ssj-menu .ssj-tag {
-  float: right;
-  margin-top: 0.3em; /* (2-1.4)/2 */
-  margin-left:0.45em; /* :before border width */
-  height: 1.4em; /*2em*/
-  font-size: 0.75em;
-  line-height: 1.4em;
-}
-.ssj-menu .ssj-tag::before {
-   top: 0.2em;
-}
-
-</style>
-
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
-  <title>TEST</title>
+  <title>SIMPLIFY SEARCH EXAMPLE</title>
+  <link href="../css/simplify-search.css" rel="stylesheet" type="text/css" />
 </head>
 
 <body>
@@ -211,6 +128,10 @@
   autoComplete:<input type='text' data-test id='autoObj' autocomplete="off">
   <input type='button' id='btn1' value='save'>
    <input type='button' id='btn2' value='reset'>
+
+
+
+  <script src="../js/common.js"></script>
   <script src="../js/simplify-search.js"></script>
   <script>
     var testJsObj = simplifySearch({
@@ -233,6 +154,7 @@
     document.getElementById('btn2').onclick = function(){
       testJsObj.reset();
     };
+    
     console.log(testJsObj.log());
   </script>
 </body>
